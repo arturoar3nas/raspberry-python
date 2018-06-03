@@ -268,7 +268,7 @@ class Wacthdogapp:
         conf = Config.getInstance()
 
         # Ask by the process
-        proc_name = conf.data["Application"]
+        proc_name = conf.data["Aplication"]
         for proc in psutil.process_iter():
             pid = psutil.Process(proc.pid)  # Get the process info using PID
             pname = proc.name()  # Here is the process name
@@ -277,14 +277,14 @@ class Wacthdogapp:
                 logger.info("Process ok!")
                 logger.info(pid)
                 return True
-            else:
-                logger.error("Process shutdown")
-                return False
 
+        #if not appear the process
+        logger.error("Process shut down")
         return False
 
     def startapp(self):
-        os.system("sudo python3 ./Demo.py")
+        os.system("sudo service postgresql start")
+        #os.system("sudo python3 ./Demo.py")
         return
 
 
@@ -342,7 +342,7 @@ class Config:
     __instance = None
 
     @staticmethod
-    def getInstance(self):
+    def getInstance():
         """ Static access method. """
         if Config.__instance == None:
             Config()
@@ -381,6 +381,7 @@ if __name__ == "__main__":
     """
     test
     """
-    test_sys = Sysinfo()
-    test_sys.getsysinfo()
+    wd = Wacthdogapp()
+    wd.getstatusapp()
+    wd.startapp()
 
