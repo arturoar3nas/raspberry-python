@@ -1,0 +1,17 @@
+{
+  "Flags": {
+  "Wifi": true,
+  "3G": true,
+  "Bluethoot": true
+  },
+  "3G": {
+    "APN": "Entel",
+    "User": "entel",
+    "Psw": "entel"
+  },
+  "Wifi": {
+    "SSID": "Internet",
+    "Psw": "Chelasforever"
+  },
+  "Aplication": "Demo.py"
+}
