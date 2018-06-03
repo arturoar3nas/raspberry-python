@@ -1,9 +1,6 @@
 #!/usr/bin/python3
 
 """
-# Copyright 2015-2017 Zack Scholl. All rights reserved.
-# Use of this source code is governed by a AGPL
-# license that can be found in the LICENSE file.
 # Service to managed
 #
 #
@@ -21,18 +18,15 @@ import time
 import atexit
 import signal
 
-
-print("servicecom start")
-
 # create logger with 'spam_application'
 logger = logging.getLogger('servicecom.py')
 logger.setLevel(logging.DEBUG)
-logger.info("servicecom start")
 
 # change this value based on which GPIO port the relay is connected to
 # for modem managed
 PWR_PIN = 18
 RST_PIN = 17
+
 
 class Daemon:
     """A generic daemon class.
@@ -98,14 +92,16 @@ class Daemon:
             with open(self.pidfile, 'r') as pf:
 
                 pid = int(pf.read().strip())
-        except IOError:
+        except (IOError, ValueError):
             pid = None
 
         if pid:
-            message = "pidfile {0} already exist. " + \
-                      "Daemon already running?\n"
-            sys.stderr.write(message.format(self.pidfile))
-            sys.exit(1)
+            check = self.check_pid(pid)
+            if check:
+                message = "pidfile {0} already exist. " + \
+                          "Daemon already running?\n"
+                sys.stderr.write(message.formsat(self.pidfile))
+                sys.exit(1)
 
         # Start the daemon
         self.daemonize()
@@ -152,11 +148,39 @@ class Daemon:
         It will be called after the process has been daemonized by
         start() or restart()."""
 
+    def check_pid(self, pid):
+        """ Check For the existence of a unix pid. """
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        else:
+            return True
 
 class MyDaemon(Daemon):
     def run(self):
         while True:
-            time.sleep(1)
+            time.sleep(10)
+            modem = Modem()
+            com = ThrdGnrt()
+            wd = Wacthdogapp()
+            sysinfo = Sysinfo()
+
+            # First we Check the status from modem
+            # modem.getstatus()
+
+            # Then we check the 3g connection
+            # com.getstatus()
+
+            # the next stuff by do is check if the app still running
+            app = wd.getstatusapp()
+
+            # if the app is stoped
+            if not app:
+                wd.startapp()
+
+            # Finally checked the system and put this info in the log
+            sysinfo.getsysinfo()
 
 
 class Modem:
@@ -352,7 +376,7 @@ if __name__ == "__main__":
     srlz = json.dumps(s.data)
     logger.info(srlz)
 
-    daemon = MyDaemon('/home/pi/daemon.pid')
+    daemon = MyDaemon('/home/pi/servicecom.pid')
     if len(sys.argv) == 2:
         if 'start' == sys.argv[1]:
             daemon.start()
