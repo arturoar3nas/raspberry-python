@@ -1,12 +1,15 @@
 #!/usr/bin/python3
 
 """
-# Service to managed
-#
-#
-#
-#
+  Service Communication Manager
+  This Python Script Damon do the below stuff:
+  Check the communication 3G
+  Check and Control the Status modem
+  Check the status application
+  Check the status info and create a json file
+  The Documentation of each class it's inside of them
 """
+
 import os
 import gpiozero
 from time import sleep
@@ -17,6 +20,7 @@ import sys
 import time
 import atexit
 import signal
+import subprocess
 
 # create logger with 'spam_application'
 logger = logging.getLogger('servicecom.py')
@@ -143,7 +147,7 @@ class Daemon:
         self.start()
 
     def run(self):
-        """You should override this method when you subclass Daemon.
+        """You should override this method whit you subclass Daemon.
 
         It will be called after the process has been daemonized by
         start() or restart()."""
@@ -158,19 +162,33 @@ class Daemon:
             return True
 
 class MyDaemon(Daemon):
+
+    """override method subclass Daemon."""
     def run(self):
+        modem = Modem()
+        com = ThrdGnrt()
+        wd = Wacthdogapp()
+        sysinfo = Sysinfo()
+        com.start()  # start communication
+        logger.info("wait init 20 seconds")
+        sleep(20)
+        logger.info("done!")
         while True:
-            time.sleep(10)
-            modem = Modem()
-            com = ThrdGnrt()
-            wd = Wacthdogapp()
-            sysinfo = Sysinfo()
+            time.sleep(5)
 
             # First we Check the status from modem
             # modem.getstatus()
 
             # Then we check the 3g connection
-            # com.getstatus()
+            status_3g = com.getstatus()
+
+            # Fail comunication
+            if not status_3g:
+                modem.stop()
+                com.stop()
+                sleep(2)  # wait a 2 seconds and...
+                modem.start()
+                com.start()
 
             # the next stuff by do is check if the app still running
             app = wd.getstatusapp()
@@ -180,6 +198,7 @@ class MyDaemon(Daemon):
                 wd.startapp()
 
             # Finally checked the system and put this info in the log
+            logger.debug("get info")
             sysinfo.getsysinfo()
 
 
@@ -244,11 +263,59 @@ class ThrdGnrt:
 
     """
     def __init__(self):
+        self.start()
+        return
+
+    def start(self):
+
+        subprocess.run("sudo /usr/bin/modem3g/sakis3g \
+        connect --console --interactive \
+        APN=CUSTOM_APN \
+        CUSTOM_APN='imovil.entelpcs.cl' \
+        APN_USER='entelcps' \
+        APN_PASS='entelcps' \
+        USBINTERFACE=3 \
+        USBMODEM=05c6:9000 \
+        OTHER=USBMODEM \
+        MODEM=OTHER", shell=True)
+        logger.info("Sucess Modem 3g")
+        return
+
+    def stop(self):
+        os.system("sudo /usr/bin/modem3g/sakis3g disconnect ")
         return
 
     def getstatus(self):
-        return
+        fping = self.ping()
+        if not fping:
+            return False
+        else:
+            return True
 
+    def modemstatus(self):
+        """"
+            Me falta Probarlo
+        """
+        proc = os.subprocess.Popen(["sudo", "/usr/bin/modem3g/sakis3g disconnect"], stdout=os.subprocess.PIPE, shell=True)
+        (out, err) = proc.communicate()
+        if out == "SIMCOM_SIM5320A connected to entel (73001).":
+            return True
+        else:
+            return False
+
+    def ping(self):
+        err = 0
+        for i in range(1, 10):  # try 10 time
+            response = os.system("ping -c 1 www.google.cl")
+            if response == 0:
+                logger.info("ping ok!")
+            else:
+                logger.info("ping fail")
+                err = err + 1
+        if err > 5:
+            return False
+        else:
+            return True
 
 class Wacthdogapp:
     """
@@ -322,11 +389,13 @@ class Sysinfo:
         data['Cpu Percent'] = self.cpu
         self.str = json.dumps(data)
         self.writejson()
+        return
 
     def writejson(self):
         fjson = open("sysinfo.json", "w+")
         fjson.write(self.str)
         fjson.close()
+        return
 
 
 class Config:

@@ -5,9 +5,9 @@
   "Bluethoot": true
   },
   "3G": {
-    "APN": "Entel",
-    "User": "entel",
-    "Psw": "entel"
+    "APN": "imovil.entelpcs.cl",
+    "User": "entelcps",
+    "Psw": "entelcps"
   },
   "Wifi": {
     "SSID": "Internet",
