@@ -424,6 +424,7 @@ class Config:
 
 
 if __name__ == "__main__":
+    
     with open('config.json') as f:
         data = json.load(f)
     s = Config(data)
