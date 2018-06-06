@@ -28,8 +28,7 @@ logger.setLevel(logging.DEBUG)
 
 # change this value based on which GPIO port the relay is connected to
 # for modem managed
-PWR_PIN = 18
-RST_PIN = 17
+PWR_PIN = 5
 
 
 class Daemon:
@@ -104,7 +103,7 @@ class Daemon:
             if check:
                 message = "pidfile {0} already exist. " + \
                           "Daemon already running?\n"
-                sys.stderr.write(message.formsat(self.pidfile))
+                sys.stderr.write(message.format(self.pidfile))
                 sys.exit(1)
 
         # Start the daemon
@@ -169,32 +168,38 @@ class MyDaemon(Daemon):
 
     """override method subclass Daemon."""
     def run(self):
+        conf = Config.getInstance()
+        timeout = conf.data["ScanTime"]
+        logger.info("Time Scan %d" % timeout)
         modem = Modem()
         com = ThrdGnrt()
         wd = Wacthdogapp()
         sysinfo = Sysinfo()
         com.start()  # start communication
         while True:
-            time.sleep(5)
-
+            time.sleep(timeout)
+            logger.info("check the 3g connection")
             # Then we check the 3g connection
             status_3g = com.getstatus()
-
             # Fail communication
             if not status_3g:
+                logger.info("Fail communication")
                 modem.stop()
                 com.stop()
-                sleep(2)  # wait a 2 seconds and...
+                sleep(5)  # wait a 5 seconds and...
                 modem.start()
                 com.start()
 
+            logger.info("check if the app still running")
             # the next stuff by do is check if the app still running
             app = wd.getstatusapp()
 
             # if the app is stop
             if not app:
+                logger.info("app is stop")
                 wd.startapp()
 
+            logger.info("checked the system and put this info in the log")
             # Finally checked the system and put this info in the log
             sysinfo.getsysinfo()
 
@@ -202,53 +207,37 @@ class MyDaemon(Daemon):
 class Modem:
     """
     Brief:
-    The Modem xxxx work using the pins xx for the power and xx for the reset
+    The Modem SIM5320A work using the pins GPIO5 for the power
     This class managed the modem and do the follow actions:
 
     Usage: subclass the Daemon class and override the run() method
-    1) Start modem
+    1) Start:
+        Turn on modem
+    2) Stop:
+        Turn down the modem
+
     """
     def __init__(self):
         # Define like output the pin
         self.pwr = gpiozero.OutputDevice(PWR_PIN, active_high=False, initial_value=False)
-        self.rst = gpiozero.OutputDevice(RST_PIN, active_high=False, initial_value=False)
         return
 
     def start(self):
         self.pwr.on()
-        sleep(1)  # wait a ms
-        self.rst.on()
-        sleep(1)  # wait a ms
-        self.rst.off()
-        sleep(1)  # wait a ms
-        self.rst.on()
+        sleep(0.1)  # wait a ms
+        self.pwr.off()
+        sleep(0.1)
+        self.pwr.on()
         logger.info("Start modem...")
         return
 
     def stop(self):
+        self.pwr.off()
+        sleep(1)  # wait a s
         self.pwr.on()
-        sleep(1)  # wait a ms
-        self.rst.on()
-        sleep(1)  # wait a ms
-        self.rst.off()
-        sleep(1)  # wait a ms
-        self.rst.on()
+        sleep(1)
+        self.pwr.off()
         logger.info("Off modem...")
-        return
-
-    def getstatus(self):
-        logger.info("Status modem...")
-        return
-
-    def reset(self):
-        self.pwr.on()
-        sleep(1)  # wait a ms
-        self.rst.on()
-        sleep(1)  # wait a ms
-        self.rst.off()
-        sleep(1)  # wait a ms
-        self.rst.on()
-        logger.info("Reset modem...")
         return
 
 
@@ -257,7 +246,9 @@ class ThrdGnrt:
     Brief:
      3G communication managed
     Usage:
-
+        1) do ping to www.google.cl
+        2) ask to modem the status
+        both return a bool if the connection it's ok
     """
     def __init__(self):
         self.start()
@@ -282,22 +273,33 @@ class ThrdGnrt:
         return
 
     def getstatus(self):
+        logger.info("check ping!")
         fping = self.ping()
-        if not fping:
-            return False
-        else:
+        logger.info("check status modem")
+        mstatus = self.modemstatus()
+        if fping and mstatus:
             return True
+        else:
+            return False
 
     def modemstatus(self):
-        """"
-            Me falta Probarlo
-        """
-        proc = os.subprocess.Popen(["sudo", "/usr/bin/modem3g/sakis3g status"], stdout=os.subprocess.PIPE, shell=True)
-        (out, err) = proc.communicate()
-        if out == "SIMCOM_SIM5320A connected to entel (73001).":
-            return True
-        else:
-            return False
+        # proc = subprocess.Popen(["sudo", " /usr/bin/modem3g/sakis3g status"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        #
+        # try:
+        #     (out, err) = proc.communicate(timeout=5)
+        # except subprocess.TimeoutExpired:
+        #     proc.kill()
+        #     outs, errs = proc.communicate()
+        #     logger.info("Modem Time out request")
+        #     return False
+        #
+        # if "connected" in out:
+        #     logger.info("Modem ok status")
+        #     return True
+        # else:
+        #     logger.info("Modem fail status s")
+        #     return False
+        return True
 
     def ping(self):
         err = 0
@@ -309,9 +311,12 @@ class ThrdGnrt:
                 logger.error("ping fail")
                 err = err + 1
         if err > 5:
+            logger.info("ping fail!")
             return False
         else:
+            logger.info("ping ok!")
             return True
+
 
 class Wacthdogapp:
     """
@@ -323,15 +328,12 @@ class Wacthdogapp:
 
     def __init__(self):
         self.proc_name = None
+        self.conf = Config.getInstance()
         return
 
     def getstatusapp(self):
-
-        # Read the config
-        conf = Config.getInstance()
-
         # Ask by the process
-        self.proc_name = conf.data["Aplication"]
+        self.proc_name = self.conf.data["Aplication"]
         for proc in psutil.process_iter():
             pid = psutil.Process(proc.pid)  # Get the process info using PID
             pname = proc.name()  # Here is the process name
@@ -346,7 +348,7 @@ class Wacthdogapp:
         return False
 
     def startapp(self):
-        os.system("sudo python3 ./%s" % self.proc_name)
+        os.system("sudo python3 /%s" % self.proc_name)
         return
 
 
@@ -424,7 +426,7 @@ class Config:
 
 
 if __name__ == "__main__":
-    
+
     with open('config.json') as f:
         data = json.load(f)
     s = Config(data)
@@ -441,7 +443,7 @@ if __name__ == "__main__":
     # add the handlers to the logger
     logger.addHandler(fh)
     logger.addHandler(ch)
-    logger.info(json.dumps(s.data))
+    logger.debug(json.dumps(s.data))
 
     daemon = MyDaemon('/home/pi/servicecom.pid')
     if len(sys.argv) == 2:

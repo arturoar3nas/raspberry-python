@@ -1,7 +1,7 @@
 # Servicecom
 # Tutorial
 ## Service Communication Manager
-  This Python Script Damon do the below stuff:
+  This Python Script Daemon do the below stuff:
   - Check the communication 3G
   - Check and Control the Status modem
   - Check the status application
@@ -17,9 +17,11 @@
     - user
     - password
 
-    and will you need set the program to at config.json for monitoring.
+    and will you need set the program to at config.json for monitoring with the full path.
 
     First of all copy the files config.json and servicecom.py to /home/pi directory
+
+    then you will need add the time scan to daemon in the config.json
 
 ### Installation
 
@@ -63,4 +65,10 @@ For view the process use:
 ```sh
 sudo ps -A | grep "python3"
 ```
+
 and you will see python3 process running
+
+For view the log on real time use:
+```sh
+tail -f servicecom.log
+```

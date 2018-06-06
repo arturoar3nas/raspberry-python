@@ -13,5 +13,6 @@
     "SSID": "Internet",
     "Psw": "Chelasforever"
   },
-  "Aplication": "Demo.py"
+  "Aplication": "Demo.py",
+  "ScanTime": 5
 }
