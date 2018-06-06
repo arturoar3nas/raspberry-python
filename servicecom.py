@@ -118,6 +118,7 @@ class Daemon:
         try:
             with open(self.pidfile, 'r') as pf:
                 pid = int(pf.read().strip())
+                logger.debug("pid: %d" % pid)
         except IOError:
             pid = None
 
@@ -132,6 +133,7 @@ class Daemon:
             while 1:
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(0.1)
+                os.system("sudo /usr/bin/modem3g/sakis3g disconnect")  # stop the 3G
         except OSError as err:
             e = str(err.args)
             if e.find("No such process") > 0:
@@ -152,7 +154,8 @@ class Daemon:
         It will be called after the process has been daemonized by
         start() or restart()."""
 
-    def check_pid(self, pid):
+    @staticmethod
+    def check_pid(pid):
         """ Check For the existence of a unix pid. """
         try:
             os.kill(pid, 0)
@@ -160,6 +163,7 @@ class Daemon:
             return False
         else:
             return True
+
 
 class MyDaemon(Daemon):
 
@@ -170,19 +174,13 @@ class MyDaemon(Daemon):
         wd = Wacthdogapp()
         sysinfo = Sysinfo()
         com.start()  # start communication
-        logger.info("wait init 20 seconds")
-        sleep(20)
-        logger.info("done!")
         while True:
             time.sleep(5)
-
-            # First we Check the status from modem
-            # modem.getstatus()
 
             # Then we check the 3g connection
             status_3g = com.getstatus()
 
-            # Fail comunication
+            # Fail communication
             if not status_3g:
                 modem.stop()
                 com.stop()
@@ -193,12 +191,11 @@ class MyDaemon(Daemon):
             # the next stuff by do is check if the app still running
             app = wd.getstatusapp()
 
-            # if the app is stoped
+            # if the app is stop
             if not app:
                 wd.startapp()
 
             # Finally checked the system and put this info in the log
-            logger.debug("get info")
             sysinfo.getsysinfo()
 
 
@@ -267,7 +264,6 @@ class ThrdGnrt:
         return
 
     def start(self):
-
         subprocess.run("sudo /usr/bin/modem3g/sakis3g \
         connect --console --interactive \
         APN=CUSTOM_APN \
@@ -282,7 +278,7 @@ class ThrdGnrt:
         return
 
     def stop(self):
-        os.system("sudo /usr/bin/modem3g/sakis3g disconnect ")
+        os.system("sudo /usr/bin/modem3g/sakis3g disconnect")
         return
 
     def getstatus(self):
@@ -296,7 +292,7 @@ class ThrdGnrt:
         """"
             Me falta Probarlo
         """
-        proc = os.subprocess.Popen(["sudo", "/usr/bin/modem3g/sakis3g disconnect"], stdout=os.subprocess.PIPE, shell=True)
+        proc = os.subprocess.Popen(["sudo", "/usr/bin/modem3g/sakis3g status"], stdout=os.subprocess.PIPE, shell=True)
         (out, err) = proc.communicate()
         if out == "SIMCOM_SIM5320A connected to entel (73001).":
             return True
@@ -308,9 +304,9 @@ class ThrdGnrt:
         for i in range(1, 10):  # try 10 time
             response = os.system("ping -c 1 www.google.cl")
             if response == 0:
-                logger.info("ping ok!")
+                logger.debug("ping ok!")
             else:
-                logger.info("ping fail")
+                logger.error("ping fail")
                 err = err + 1
         if err > 5:
             return False
@@ -319,13 +315,14 @@ class ThrdGnrt:
 
 class Wacthdogapp:
     """
-    Brief:
+    Brief: This class monitoring a app declared at config.json
 
     Usage:
-
+        getstatusapp: this method check if the app is runing and return True if it's ok!
     """
 
     def __init__(self):
+        self.proc_name = None
         return
 
     def getstatusapp(self):
@@ -355,16 +352,19 @@ class Wacthdogapp:
 
 class Sysinfo:
     """
-    Brief:
+    Brief: Get the system information
 
-    Usage:
-
+    Usage: this class use psutil module for get info from the system
+            too create a json file whit the data
     """
     def __init__(self):
+        self.mem = None
+        self.disk = None
+        self.cpu = None
+        self.str = ""
         return
 
     def getsysinfo(self):
-        # Get memory info
         self.mem = psutil.virtual_memory()
         #Get disk info
         self.disk = psutil.disk_usage('/')
@@ -375,7 +375,6 @@ class Sysinfo:
         return
 
     def createjson(self):
-        data = {}
         data["Active Memory"] = self.mem.active
         data["Available Memory"] = self.mem.available
         data["Buffer Memory"] = self.mem.buffers
@@ -392,7 +391,7 @@ class Sysinfo:
         return
 
     def writejson(self):
-        fjson = open("sysinfo.json", "w+")
+        fjson = open("/home/pi/sysinfo.json", "w+")
         fjson.write(self.str)
         fjson.close()
         return
@@ -401,9 +400,9 @@ class Sysinfo:
 class Config:
     """
     Brief:
-        Singleton Class
+        Singleton Class.
     Usage:
-
+        for data persistence storaged at config.json
     """
     # Here will be the instance stored.
     __instance = None
@@ -435,15 +434,13 @@ if __name__ == "__main__":
     fh.setLevel(logging.INFO)
     ch.setLevel(logging.INFO)
     # create formatter and add it to the handlers
-    formatter = logging.Formatter(
-        '%(asctime)s - %(funcName)s:%(lineno)d - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(funcName)s:%(lineno)d - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
     # add the handlers to the logger
     logger.addHandler(fh)
     logger.addHandler(ch)
-    srlz = json.dumps(s.data)
-    logger.info(srlz)
+    logger.info(json.dumps(s.data))
 
     daemon = MyDaemon('/home/pi/servicecom.pid')
     if len(sys.argv) == 2:
