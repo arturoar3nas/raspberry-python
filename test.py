@@ -166,8 +166,8 @@ class Daemon:
 
 
 class MyDaemon(Daemon):
-    """override method subclass Daemon."""
 
+    """override method subclass Daemon."""
     def run(self):
         conf = Config.getInstance()
         timeout = conf.data["ScanTime"]
@@ -177,8 +177,6 @@ class MyDaemon(Daemon):
         wd = Wacthdogapp()
         sysinfo = Sysinfo()
         com.start()  # start communication
-        # wifi = Wifi()
-        # configmonitor = File('/home/pi/config.json')
         while True:
             time.sleep(timeout)
             logger.info("check the 3g connection")
@@ -206,28 +204,6 @@ class MyDaemon(Daemon):
             # Finally checked the system and put this info in the log
             sysinfo.getsysinfo()
 
-        # if wi-fi flag it's enabled
-        # if conf.data["Flags"]["Wifi"]:
-        #     # check connection wi-fi
-        #     status_wifi = wifi.testConnection()
-        #     if not status_wifi & conf.statuswifi:
-        #         wifi.reconnect()
-        #
-        #     if not status_wifi:
-        #         # if not connect then disconnect and connect the interface
-        #         wifi.disconnect()
-        #         sleep(2)
-        #         wifi.reconnect()
-        # # else wifi flag it's disabled disconnect the wlan0 interface
-        # else:
-        #     # Check to not disable all time
-        #     if conf.statuswifi:
-        #         wifi.disconnect()
-        # if configmonitor.verify():
-        #     conf.load()
-        # in case the flies
-        # wifi.verify()
-
 
 class Modem:
     """
@@ -242,7 +218,6 @@ class Modem:
         Turn down the modem
 
     """
-
     def __init__(self):
         # Define like output the pin
         self.pwr = gpiozero.OutputDevice(PWR_PIN, active_high=False, initial_value=False)
@@ -276,7 +251,6 @@ class ThrdGnrt:
         2) ask to modem the status
         both return a bool if the connection it's ok
     """
-
     def __init__(self):
         self.start()
         return
@@ -312,8 +286,7 @@ class ThrdGnrt:
     def modemstatus(self):
 
         mystr = b'connected'
-        proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"],
-                                       shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"],  shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
 
         # try:
         #     proc.communicate(timeout=5)
@@ -388,7 +361,6 @@ class Sysinfo:
     Usage: this class use psutil module for get info from the system
             too create a json file whit the data
     """
-
     def __init__(self):
         self.mem = None
         self.disk = None
@@ -398,9 +370,9 @@ class Sysinfo:
 
     def getsysinfo(self):
         self.mem = psutil.virtual_memory()
-        # Get disk info
+        #Get disk info
         self.disk = psutil.disk_usage('/')
-        # Get cpu info
+        #Get cpu info
         self.cpu = psutil.cpu_percent()
 
         self.createjson()
@@ -438,7 +410,7 @@ class Config:
     """
     # Here will be the instance stored.
     __instance = None
-
+	
     def load(self):
         # Load data from config.json
         with open('config.json') as f:
@@ -469,8 +441,8 @@ class Config:
             raise Exception("This class is a singleton!")
         else:
             Config.__instance = self
-
-
+			
+			
 class File:
     """
     Brief:
@@ -478,8 +450,7 @@ class File:
     Usage:
 
     """
-
-    def __init__(self, file):
+    def __init__(self,file):
         self._cached_stamp = 0
         self.file = file
 
@@ -500,7 +471,7 @@ class File:
             return True
         else:
             return False
-
+			
 
 class Wifi:
     """
@@ -513,7 +484,6 @@ class Wifi:
         testConnection: make sure is ok the connection
         Note: after the use connect you must be will reboot the raspberry
     """
-
     def __init__(self):
         conf = Config.getInstance()
         self.password = conf.data["Wifi"]["Psw"]
@@ -521,8 +491,7 @@ class Wifi:
         return
 
     def create(self):
-        os.system(
-            "echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
+        os.system("echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
         os.system("wpa_cli -i wlan0 reconfigure")
         return
 
@@ -556,7 +525,7 @@ class Wifi:
         if not cmpssid or cmpsw:
             # if network no exist then use connect
             self.create()
-
+			
 
 if __name__ == "__main__":
 
