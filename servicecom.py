@@ -1,16 +1,22 @@
 #!/usr/bin/python3
 
 """
+# @file   servicecom.py
+# @author Arturo Arenas (arturoar3nas@gmail.com)
+# @date   12/06/18
+# Brief:
   Service Communication Manager
-  This Python Script Damon do the below stuff:
+  This Python Script Daemon do the below stuffs:
   Check the communication 3G
   Check and Control the Status modem
   Check the status application
   Check the status info and create a json file
+  Managed Wifi connection
   The Documentation of each class it's inside of them
 """
 
 import os
+import urllib
 import gpiozero
 from time import sleep
 import psutil
@@ -22,13 +28,19 @@ import atexit
 import signal
 import subprocess
 
-# create logger with 'spam_application'
-logger = logging.getLogger('servicecom.py')
-logger.setLevel(logging.DEBUG)
-
 # change this value based on which GPIO port the relay is connected to
 # for modem managed
 PWR_PIN = 5
+
+# Defines
+LOGGER = 'servicecom.py'
+HOST_TEST = "https://www.google.com"
+LOGGER_FILE = '/tmp/servicecom.log'
+PID = '/tmp/servicecom.pid'
+
+# create logger with 'spam_application'
+logger = logging.getLogger(LOGGER)
+logger.setLevel(logging.DEBUG)
 
 
 class Daemon:
@@ -168,40 +180,90 @@ class MyDaemon(Daemon):
 
     """override method subclass Daemon."""
     def run(self):
-        conf = Config.getInstance()
+
+        conf = Config()
+        logger.debug(json.dumps(conf.data))
+
+        # set the scan time
         timeout = conf.data["ScanTime"]
         logger.info("Time Scan %d" % timeout)
+
+        # create objects
         modem = Modem()
         com = ThrdGnrt()
         wd = Wacthdogapp()
-        sysinfo = Sysinfo()
-        com.start()  # start communication
+        info = Sysinfo()
+        wifi = Wifi()
+        configmonitor = File('/home/pi/config.json')
+
+        # Create and check changes in the network wifi setup
+        wifi.verify()
+
         while True:
             time.sleep(timeout)
-            logger.info("check the 3g connection")
-            # Then we check the 3g connection
-            status_3g = com.getstatus()
-            # Fail communication
-            if not status_3g:
-                logger.info("Fail communication")
-                modem.stop()
-                com.stop()
-                sleep(5)  # wait a 5 seconds and...
-                modem.start()
-                com.start()
 
-            logger.info("check if the app still running")
-            # the next stuff by do is check if the app still running
-            app = wd.getstatusapp()
+            # If the 3G it's enabled
+            if conf.data["Flags"]["3G"]:
+                logger.info("check the 3g connection")
 
-            # if the app is stop
-            if not app:
-                logger.info("app is stop")
-                wd.startapp()
+                # Then we check the 3g connection
+                status_3g = com.testConnection()
+
+                # Fail communication
+                if not status_3g:
+                    logger.info("Fail communication")
+                    modem.stop()
+                    com.stop()
+                    sleep(5)  # wait a 5 seconds and...
+                    modem.start()
+                    com.start()
+                    conf.status3g(True)
+            else:
+                # Check to not disable all time
+                if conf.status3g:
+                    # Modem cut off
+                    com.stop()
+                    modem.stop()
+                    conf.status3g(False)
+
+            # Check Flag for Scan App
+            if conf.data["StopScan"]:
+                logger.info("check if the app still running")
+                # the next stuff by do is check if the app still running
+                app = wd.getstatusapp()
+
+                # if the app is stop
+                if not app:
+                    logger.info("app is stop")
+                    wd.startapp()
 
             logger.info("checked the system and put this info in the log")
             # Finally checked the system and put this info in the log
-            sysinfo.getsysinfo()
+            info.getsysinfo()
+
+            # if wi-fi flag it's enabled
+            if conf.data["Flags"]["Wifi"]:
+                # check connection wi-fi
+                status_wifi = wifi.testConnection()
+                if not status_wifi & conf.statuswifi:
+                    wifi.reconnect()
+
+                if not status_wifi:
+                    # if not connect then disconnect and connect the interface
+                    wifi.disconnect()
+                    sleep(2)
+                    wifi.reconnect()
+            # else wifi flag it's disabled disconnect the wlan0 interface
+            else:
+                # Check to not disable all time
+                if conf.statuswifi:
+                    wifi.disconnect()
+
+            # inspect for changes in config.json
+            if configmonitor.verify():
+                conf.load()
+                # in case the flies
+                wifi.verify()
 
 
 class Modem:
@@ -246,7 +308,7 @@ class ThrdGnrt:
     Brief:
      3G communication managed
     Usage:
-        1) do ping to www.google.cl
+        1) do ping to HOST_TEST
         2) ask to modem the status
         both return a bool if the connection it's ok
     """
@@ -272,7 +334,7 @@ class ThrdGnrt:
         os.system("sudo /usr/bin/modem3g/sakis3g disconnect")
         return
 
-    def getstatus(self):
+    def testConnection(self):
         logger.info("check ping!")
         fping = self.ping()
         logger.info("check status modem")
@@ -283,28 +345,28 @@ class ThrdGnrt:
             return False
 
     def modemstatus(self):
-        # proc = subprocess.Popen(["sudo", " /usr/bin/modem3g/sakis3g status"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        #
-        # try:
-        #     (out, err) = proc.communicate(timeout=5)
-        # except subprocess.TimeoutExpired:
-        #     proc.kill()
-        #     outs, errs = proc.communicate()
-        #     logger.info("Modem Time out request")
-        #     return False
-        #
-        # if "connected" in out:
-        #     logger.info("Modem ok status")
-        #     return True
-        # else:
-        #     logger.info("Modem fail status s")
-        #     return False
+        proc = subprocess.Popen(["sudo", " /usr/bin/modem3g/sakis3g status"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+        try:
+            (out, err) = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            outs, errs = proc.communicate()
+            logger.info("Modem Time out request")
+            return False
+
+        if "connected" in out:
+            logger.info("Modem ok status")
+            return True
+        else:
+            logger.info("Modem fail status s")
+            return False
         return True
 
     def ping(self):
         err = 0
         for i in range(1, 10):  # try 10 time
-            response = os.system("ping -c 1 www.google.cl")
+            response = os.system("ping -c 1 " + HOST_TEST)
             if response == 0:
                 logger.debug("ping ok!")
             else:
@@ -377,6 +439,7 @@ class Sysinfo:
         return
 
     def createjson(self):
+        data = []
         data["Active Memory"] = self.mem.active
         data["Available Memory"] = self.mem.available
         data["Buffer Memory"] = self.mem.buffers
@@ -409,6 +472,20 @@ class Config:
     # Here will be the instance stored.
     __instance = None
 
+    def load(self):
+        # Load data from config.json
+        with open('config.json') as f:
+            self.data = json.load(f)
+        return
+
+    def set3gstatus(self, status):
+        self.status3g = status
+        return
+
+    def setwifistatus(self, status):
+        self.statuswifi = status
+        return
+
     @staticmethod
     def getInstance():
         """ Static access method. """
@@ -416,23 +493,106 @@ class Config:
             Config()
         return Config.__instance
 
-    def __init__(self, data):
+    def __init__(self):
         """ Virtually private constructor. """
-        self.data = data
+        self.data = None
+        self.status3g = False
+        self.statuswifi = False
+
         if Config.__instance != None:
             raise Exception("This class is a singleton!")
         else:
             Config.__instance = self
 
 
+class File:
+    """
+    Brief:
+
+    Usage:
+
+    """
+    def __init__(self,file):
+        self._cached_stamp = 0
+        self.file = file
+
+    def verify(self):
+        stamp = os.stat(self.file).st_mtime
+        if stamp != self._cached_stamp:
+            self._cached_stamp = stamp
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def parsefilecmp(self, file, str1):
+        with open(file, 'r') as file1:
+            same = set(file1).intersection(str1)
+
+        if same:
+            return True
+        else:
+            return False
+
+
+class Wifi:
+    """
+    Brief: This class managed wi-fi connection
+
+    Usage:
+        create: overwrite wpa_supplicant.conf file for store the ssid and password
+        disconnect: disconnect the wlan0 interface
+        reconnect: connect the wlan0 interface
+        testConnection: make sure is ok the connection
+        Note: after the use connect you must be will reboot the raspberry
+    """
+    def __init__(self):
+        conf = Config.getInstance()
+        self.password = conf.data["Wifi"]["Psw"]
+        self.ssid = conf.data["Wifi"]["SSID"]
+        return
+
+    def create(self):
+        os.system("echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
+        os.system("wpa_cli -i wlan0 reconfigure")
+        return
+
+    def disconnect(self):
+        os.system("sudo ifconfig wlan0 down")
+        return
+
+    def reconnect(self):
+        os.system("sudo ifconfig wlan0 up")
+        return
+
+    def testConnection(self):
+        try:
+            url = HOST_TEST
+            urllib.urlopen(url)
+            status = "Wi-Fi Connected"
+        except:
+            status = "Wi-Fi not connected"
+        logger.error(status)
+        if status == "Connected":
+            return True
+        else:
+            return False
+
+    def verify(self):
+        wpa_supplicant = '/etc/wpa_supplicant/wpa_supplicant.conf'
+        s = Config.getInstance()
+        # check if the wpa_supplicant network object exist
+        cmpssid = File.parsefilecmp(wpa_supplicant, "    ssid\"" + s.data["Wifi"]["SSID"] + "\"")
+        cmpsw = File.parsefilecmp(wpa_supplicant, "    psk=\"" + s.data["Wifi"]["Psw"] + "\"")
+        if not cmpssid or cmpsw:
+            # if network no exist then use connect
+            self.create()
+
+
 if __name__ == "__main__":
 
-    with open('config.json') as f:
-        data = json.load(f)
-    s = Config(data)
-
     # create file handler which logs even debug messages
-    fh = logging.FileHandler('servicecom.log')
+    fh = logging.FileHandler(LOGGER_FILE)
     ch = logging.StreamHandler()
     fh.setLevel(logging.INFO)
     ch.setLevel(logging.INFO)
@@ -443,21 +603,20 @@ if __name__ == "__main__":
     # add the handlers to the logger
     logger.addHandler(fh)
     logger.addHandler(ch)
-    logger.debug(json.dumps(s.data))
 
-    daemon = MyDaemon('/home/pi/servicecom.pid')
-    if len(sys.argv) == 2:
-        if 'start' == sys.argv[1]:
-            daemon.start()
-        elif 'stop' == sys.argv[1]:
-            daemon.stop()
-        elif 'restart' == sys.argv[1]:
-            daemon.restart()
-        else:
-            print("Unknown command")
-            sys.exit(2)
-        sys.exit(0)
-    else:
-        print("usage: %s start|stop|restart" % sys.argv[0])
-        sys.exit(2)
+    # daemon = MyDaemon(PID)
+    # if len(sys.argv) == 2:
+    #     if 'start' == sys.argv[1]:
+    #         daemon.start()
+    #     elif 'stop' == sys.argv[1]:
+    #         daemon.stop()
+    #     elif 'restart' == sys.argv[1]:
+    #         daemon.restart()
+    #     else:
+    #         print("Unknown command")
+    #         sys.exit(2)
+    #     sys.exit(0)
+    # else:
+    #     print("usage: %s start|stop|restart" % sys.argv[0])
+    #     sys.exit(2)
 

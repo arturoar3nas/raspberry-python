@@ -10,9 +10,10 @@
     "Psw": "entelcps"
   },
   "Wifi": {
-    "SSID": "Internet",
-    "Psw": "Chelasforever"
+    "SSID": "innovared-piso1",
+    "Psw": "222275622"
   },
   "Aplication": "Demo.py",
-  "ScanTime": 5
+  "ScanTime": 5,
+  "StopScan": true
 }

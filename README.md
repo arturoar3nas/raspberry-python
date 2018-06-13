@@ -1,11 +1,20 @@
-# Servicecom
-# Tutorial
+# Servicecom.py
+
+- [Features](#Usage)
+- [Directories](#Usage)
+- [Installation](#Usage)
+- [Fast installer](#Usage)
+- [Manual installer](#Usage)
+- [Usage](#Usage)
+
 ## Service Communication Manager
   This Python Script Daemon do the below stuff:
   - Check the communication 3G
   - Check and Control the Status modem
   - Check the status application
   - Check the status info and create a json file
+  - Managed Wi-Fi communication
+  
   The Documentation of each class it's inside of them
   The Daemon generetae the following files:
   - servicecom.log
@@ -23,7 +32,49 @@
 
     then you will need add the time scan to daemon in the config.json
 
+## Directories
+
+- in servicecom there:  servicecom.py and config.json
+- in src there: all files needed
+
+```sh
+/home/pi $ 
+├─── servicecom
+│   ├─── src
+│   └───...
+```
+
 ### Installation
+
+You will need the follows tools:
+
+- [FileZilla](https://filezilla-project.org/)
+- [Putty](https://putty.org/)
+
+#### Fast installer
+
+Copy in the below directory: 
+
+```sh
+$ /home/pi/
+```
+
+The next Files:
+
+- setup.py
+- servicecom.py
+- config.json
+
+Then you will need do:
+
+```sh
+$ sudo python3 setup.py 
+```
+
+Make sure to use the command with sudo. Wait to the installer
+and later go to the [Usage](#Usage) step. 
+
+#### Manual installer
 
 #### Python
 
