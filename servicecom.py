@@ -24,7 +24,7 @@ import signal
 import subprocess
 
 # create logger with 'spam_application'
-logger = logging.getLogger('servicecom.py')
+logger = logging.getLogger('/home/pi/servicecom/servicecom.py')
 logger.setLevel(logging.DEBUG)
 
 # change this value based on which GPIO port the relay is connected to
@@ -129,11 +129,14 @@ class Daemon:
             return  # not an error in a restart
 
         # Try killing the daemon process
+        os.system("sudo /usr/bin/modem3g/sakis3g disconnect")  # stop the 3G
+        m = Modem()
+        m.stop()
+        del m
         try:
             while 1:
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(0.1)
-                os.system("sudo /usr/bin/modem3g/sakis3g disconnect")  # stop the 3G
         except OSError as err:
             e = str(err.args)
             if e.find("No such process") > 0:
@@ -179,7 +182,7 @@ class MyDaemon(Daemon):
         sysinfo = Sysinfo()
         com.start()  # start communication
         # wifi = Wifi()
-        configmonitor = File('/home/pi/config.json')
+        configmonitor = File('/home/pi/servicecom/config.json')
         while True:
             time.sleep(timeout)
             logger.info("check the 3g connection")
@@ -191,7 +194,7 @@ class MyDaemon(Daemon):
                 # Fail communication
                 if not status_3g:
                     err_com += 1
-                    logger.info("Try connections ")
+                    logger.info("Try connections %d" % err_com)
                     if err_com > 5:
                         logger.info("Fail communication")
                         com.stop()
@@ -294,7 +297,8 @@ class ThrdGnrt:
     """
 
     def __init__(self):
-        self.start()
+        if self.testconnection():
+            self.start()
         return
 
     def start(self):
@@ -436,7 +440,7 @@ class Sysinfo:
         return
 
     def writejson(self):
-        fjson = open("/home/pi/sysinfo.json", "w+")
+        fjson = open("/home/pi/servicecom/sysinfo.json", "w+")
         fjson.write(self.str)
         fjson.close()
         return
@@ -455,7 +459,7 @@ class Config:
     def load(self):
         # Load data from config.json
         try:
-            with open('config.json') as f:
+            with open('/home/pi/servicecom/config.json') as f:
                 self.data = json.load(f)
         except IOError as e:
             print("I/O error({0}): {1}".format(e.errno, e.strerror))
@@ -584,12 +588,12 @@ class Wifi:
 
 if __name__ == "__main__":
 
-    with open('config.json') as f:
+    with open('/home/pi/servicecom/config.json') as f:
         data = json.load(f)
     s = Config(data)
 
     # create file handler which logs even debug messages
-    fh = logging.FileHandler('servicecom.log')
+    fh = logging.FileHandler('/tmp/servicecom.log')
     ch = logging.StreamHandler()
     fh.setLevel(logging.INFO)
     ch.setLevel(logging.INFO)
@@ -602,7 +606,7 @@ if __name__ == "__main__":
     logger.addHandler(ch)
     logger.debug(json.dumps(s.data))
 
-    daemon = MyDaemon('/home/pi/servicecom.pid')
+    daemon = MyDaemon('/home/pi/servicecom/servicecom.pid')
     if len(sys.argv) == 2:
         if 'start' == sys.argv[1]:
             daemon.start()
