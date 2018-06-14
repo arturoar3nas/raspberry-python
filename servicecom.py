@@ -170,6 +170,7 @@ class MyDaemon(Daemon):
 
     def run(self):
         conf = Config.getInstance()
+        err_com = 0
         timeout = conf.data["ScanTime"]
         logger.info("Time Scan %d" % timeout)
         modem = Modem()
@@ -178,55 +179,68 @@ class MyDaemon(Daemon):
         sysinfo = Sysinfo()
         com.start()  # start communication
         # wifi = Wifi()
-        # configmonitor = File('/home/pi/config.json')
+        configmonitor = File('/home/pi/config.json')
         while True:
             time.sleep(timeout)
             logger.info("check the 3g connection")
+
             # Then we check the 3g connection
-            status_3g = com.getstatus()
+            status_3g = com.testconnection()
+
             # Fail communication
             if not status_3g:
-                logger.info("Fail communication")
-                modem.stop()
-                com.stop()
-                sleep(5)  # wait a 5 seconds and...
-                modem.start()
-                com.start()
+                err_com += 1
+                logger.info("Try connections ")
+                if err_com > 5:
+                    logger.info("Fail communication")
+                    com.stop()
+                    sleep(1)
+                    modem.stop()
+                    sleep(5)  # wait a 5 seconds and...
+                    modem.start()
+                    sleep(1)
+                    com.start()
+                    err_com = 0
 
-            logger.info("check if the app still running")
-            # the next stuff by do is check if the app still running
-            app = wd.getstatusapp()
+            if not conf.data["StopScan"]:
+                logger.info("check if the app still running")
+                # the next stuff by do is check if the app still running
+                app = wd.getstatusapp()
 
-            # if the app is stop
-            if not app:
-                logger.info("app is stop")
-                wd.startapp()
+                # if the app is stop
+                if not app:
+                    logger.info("app is stop")
+                    wd.startapp()
 
             logger.info("checked the system and put this info in the log")
             # Finally checked the system and put this info in the log
             sysinfo.getsysinfo()
 
-        # if wi-fi flag it's enabled
-        # if conf.data["Flags"]["Wifi"]:
-        #     # check connection wi-fi
-        #     status_wifi = wifi.testConnection()
-        #     if not status_wifi & conf.statuswifi:
-        #         wifi.reconnect()
-        #
-        #     if not status_wifi:
-        #         # if not connect then disconnect and connect the interface
-        #         wifi.disconnect()
-        #         sleep(2)
-        #         wifi.reconnect()
-        # # else wifi flag it's disabled disconnect the wlan0 interface
-        # else:
-        #     # Check to not disable all time
-        #     if conf.statuswifi:
-        #         wifi.disconnect()
-        # if configmonitor.verify():
-        #     conf.load()
-        # in case the flies
-        # wifi.verify()
+            # if wi-fi flag it's enabled
+            # if conf.data["Flags"]["Wifi"]:
+            #     # check connection wi-fi
+            #     status_wifi = wifi.testConnection()
+            #     if not status_wifi & conf.statuswifi:
+            #         wifi.reconnect()
+            #
+            #     if not status_wifi:
+            #         # if not connect then disconnect and connect the interface
+            #         wifi.disconnect()
+            #         sleep(2)
+            #         wifi.reconnect()
+            # # else wifi flag it's disabled disconnect the wlan0 interface
+            # else:
+            #     # Check to not disable all time
+            #     if conf.statuswifi:
+            #         wifi.disconnect()
+
+            logger.info("veryfy json")
+            if configmonitor.verify():
+                conf.load()
+                timeout = conf.data["ScanTime"]
+                logger.info("Time Scan %d" % timeout)
+                # in case the flies
+                # wifi.verify()
 
 
 class Modem:
@@ -245,7 +259,7 @@ class Modem:
 
     def __init__(self):
         # Define like output the pin
-        self.pwr = gpiozero.OutputDevice(PWR_PIN, active_high=False, initial_value=False)
+        self.pwr = gpiozero.OutputDevice(PWR_PIN, active_high=True, initial_value=True)
         return
 
     def start(self):
@@ -299,29 +313,25 @@ class ThrdGnrt:
         os.system("sudo /usr/bin/modem3g/sakis3g disconnect")
         return
 
-    def getstatus(self):
-        logger.info("check ping!")
-        fping = self.ping()
+    def testconnection(self):
+        # logger.info("check ping!")
+        # fping = self.ping()
         logger.info("check status modem")
         mstatus = self.modemstatus()
-        if fping and mstatus:
+        if mstatus:
             return True
         else:
             return False
 
-    def modemstatus(self):
+    @staticmethod
+    def modemstatus():
 
         mystr = b'connected'
-        proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"],
-                                       shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-
-        # try:
-        #     proc.communicate(timeout=5)
-        # except subprocess.TimeoutExpired:
-        #     proc.kill()
-        #     proc.communicate()
-        #     logger.info("Modem Time out request")
-        #     return False
+        proc = b''
+        try:
+            proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"], shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        except subprocess.CalledProcessError as e:
+            print(e.output)
 
         if proc.find(mystr) > 0:
             logger.info("Modem ok status")
@@ -330,10 +340,11 @@ class ThrdGnrt:
             logger.info("Modem fail status")
             return False
 
-    def ping(self):
+    @staticmethod
+    def ping():
         err = 0
         for i in range(1, 10):  # try 10 time
-            response = os.system("ping -c 1 www.google.cl")
+            response = os.system("ping -c 1 -i 0.2 www.google.cl")
             if response == 0:
                 logger.debug("ping ok!")
             else:
@@ -441,8 +452,17 @@ class Config:
 
     def load(self):
         # Load data from config.json
-        with open('config.json') as f:
-            self.data = json.load(f)
+        try:
+            with open('config.json') as f:
+                self.data = json.load(f)
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            print("Could not convert data to an integer.")
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+        logger.info("Load done!")
         return
 
     def set3gstatus(self, status):
@@ -487,8 +507,10 @@ class File:
         stamp = os.stat(self.file).st_mtime
         if stamp != self._cached_stamp:
             self._cached_stamp = stamp
+            logger.info("Has a file change")
             return True
         else:
+            logger.info("No change file")
             return False
 
     @staticmethod
@@ -593,3 +615,4 @@ if __name__ == "__main__":
     else:
         print("usage: %s start|stop|restart" % sys.argv[0])
         sys.exit(2)
+
