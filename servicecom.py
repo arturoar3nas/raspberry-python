@@ -184,25 +184,26 @@ class MyDaemon(Daemon):
             time.sleep(timeout)
             logger.info("check the 3g connection")
 
-            # Then we check the 3g connection
-            status_3g = com.testconnection()
+            if conf.data["Flags"]["3G"] == 1:
+                # Then we check the 3g connection
+                status_3g = com.testconnection()
 
-            # Fail communication
-            if not status_3g:
-                err_com += 1
-                logger.info("Try connections ")
-                if err_com > 5:
-                    logger.info("Fail communication")
-                    com.stop()
-                    sleep(1)
-                    modem.stop()
-                    sleep(5)  # wait a 5 seconds and...
-                    modem.start()
-                    sleep(1)
-                    com.start()
-                    err_com = 0
+                # Fail communication
+                if not status_3g:
+                    err_com += 1
+                    logger.info("Try connections ")
+                    if err_com > 5:
+                        logger.info("Fail communication")
+                        com.stop()
+                        sleep(1)
+                        modem.stop()
+                        sleep(5)  # wait a 5 seconds and...
+                        modem.start()
+                        sleep(1)
+                        com.start()
+                        err_com = 0
 
-            if not conf.data["StopScan"]:
+            if conf.data["StopScan"] == 0:
                 logger.info("check if the app still running")
                 # the next stuff by do is check if the app still running
                 app = wd.getstatusapp()
@@ -217,7 +218,7 @@ class MyDaemon(Daemon):
             sysinfo.getsysinfo()
 
             # if wi-fi flag it's enabled
-            # if conf.data["Flags"]["Wifi"]:
+            # if conf.data["Flags"]["Wifi"] == 1:
             #     # check connection wi-fi
             #     status_wifi = wifi.testConnection()
             #     if not status_wifi & conf.statuswifi:
@@ -240,7 +241,8 @@ class MyDaemon(Daemon):
                 timeout = conf.data["ScanTime"]
                 logger.info("Time Scan %d" % timeout)
                 # in case the flies
-                # wifi.verify()
+                # if conf.data["Flags"]["Wifi"] == 1:
+                #   wifi.verify()
 
 
 class Modem:

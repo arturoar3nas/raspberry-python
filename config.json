@@ -1,8 +1,8 @@
 {
   "Flags": {
-  "Wifi": true,
-  "3G": true,
-  "Bluethoot": true
+  "Wifi": 1,
+  "3G": 1,
+  "Bluethoot": 1
   },
   "3G": {
     "APN": "imovil.entelpcs.cl",
@@ -15,5 +15,5 @@
   },
   "Aplication": "Demo.py",
   "ScanTime": 5,
-  "StopScan": true
+  "StopScan": 1
 }
