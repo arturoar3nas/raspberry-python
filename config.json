@@ -15,5 +15,6 @@
   },
   "Aplication": "Demo.py",
   "ScanTime": 10,
-  "StopScan": 1
+  "StopScan": 1,
+  "ID": 1
 }

@@ -22,6 +22,23 @@ import time
 import atexit
 import signal
 import subprocess
+import ctypes
+
+# Change name process
+lib = ctypes.cdll.LoadLibrary(None)
+prctl = lib.prctl
+prctl.restype = ctypes.c_int
+prctl.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_ulong,
+                  ctypes.c_ulong, ctypes.c_ulong]
+
+
+def set_proctitle(new_title):
+    result = prctl(15, new_title, 0, 0, 0)
+    if result != 0:
+        raise OSError("prctl result: %d" % result)
+
+
+set_proctitle(b'servicecom.py')
 
 # create logger with 'spam_application'
 logger = logging.getLogger('/home/pi/servicecom/servicecom.py')
@@ -373,13 +390,14 @@ class Wacthdogapp:
     """
 
     def __init__(self):
-        self.proc_name = None
         self.conf = Config.getInstance()
+        self.proc_path_name = self.conf.data["Aplication"]
+        self.proc_name = os.path.basename(self.proc_path_name)
+        
         return
 
     def getstatusapp(self):
         # Ask by the process
-        self.proc_name = self.conf.data["Aplication"]
         for proc in psutil.process_iter():
             pid = psutil.Process(proc.pid)  # Get the process info using PID
             pname = proc.name()  # Here is the process name
@@ -394,7 +412,7 @@ class Wacthdogapp:
         return False
 
     def startapp(self):
-        os.system("sudo python3 /%s" % self.proc_name)
+        subprocess.Popen("sudo python3 /%s" % self.proc_path_name, shell=True)
         return
 
 
