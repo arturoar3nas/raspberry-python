@@ -13,8 +13,8 @@
     "SSID": "innovared-piso1",
     "Psw": "222275622"
   },
-  "Aplication": "Demo.py",
+  "Aplication": "/home/pi/servicecom/Demo.py",
   "ScanTime": 10,
-  "StopScan": 1,
+  "StopScan": 0,
   "ID": 1
 }

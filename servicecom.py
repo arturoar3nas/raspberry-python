@@ -202,9 +202,9 @@ class MyDaemon(Daemon):
         configmonitor = File('/home/pi/servicecom/config.json')
         while True:
             time.sleep(timeout)
-            logger.info("check the 3g connection")
 
             if conf.data["Flags"]["3G"] == 1:
+                logger.info("check the 3g connection")
                 # Then we check the 3g connection
                 status_3g = com.testconnection()
 
@@ -393,7 +393,7 @@ class Wacthdogapp:
         self.conf = Config.getInstance()
         self.proc_path_name = self.conf.data["Aplication"]
         self.proc_name = os.path.basename(self.proc_path_name)
-        
+
         return
 
     def getstatusapp(self):
@@ -639,4 +639,3 @@ if __name__ == "__main__":
     else:
         print("usage: %s start|stop|restart" % sys.argv[0])
         sys.exit(2)
-

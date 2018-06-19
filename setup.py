@@ -50,14 +50,11 @@ git_repositories = []
 
 
 def prepare_dirs():
-    try:
-        for dir in dirs_to_make:
+    for dir in dirs_to_make:
+        try:
             os.mkdir(dir)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
-            print('Directory not created.')
-        else:
-            raise
+        except OSError:
+                print('Directory not created.')
 
 
 def download_things():
@@ -102,9 +99,13 @@ def give_permission():
 def tar():
     os.chdir('/usr/bin/modem3g/')
     for files in untar_files:
-        tar = tarfile.open(files)
-        tar.extractall()
-        tar.close()
+        try:
+            tar = tarfile.open(files)
+            tar.extractall()
+            tar.close()
+        except:
+            print("There was an error opening tarfile. The file might be corrupt or missing.")
+
 
 
 def linecount_1(file):
@@ -120,9 +121,9 @@ def install_daemon():
     f.close()
 
     len -= 1
-    contents.insert(len,"sudo python3 /home/pi/servicecom/servicecom.py start")
+    contents.insert(len,"sudo python3 /home/pi/servicecom/servicecom.py start\n")
 
-    f = open("path_to_file", "w")
+    f = open("/etc/rc.local", "w")
     contents = "".join(contents)
     f.write(contents)
     f.close()
@@ -130,17 +131,20 @@ def install_daemon():
 
 
 def cptodir():
-    try:
-        for src in cp_files:
-            for dst in cp_dest:
-                copyfile(src, dst)
-        for rmsrc in cp_files:
-            os.remove(rmsrc)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
+    i = 0
+    while i < cp_files.__len__():
+        try:
+            copyfile(cp_files[i], cp_dest[i])
+            i+=1
+        except OSError:
             print('Error copying file')
-        else:
-            raise
+
+    for rmsrc in cp_files:
+        try:
+            os.remove(rmsrc)
+        except OSError:
+            print('Error removing file')
+
 
 
 def make_sure_sudo():
@@ -159,11 +163,9 @@ def deploy_software(update=True):
     cptodir()
     os.chmod("/usr/bin/modem3g/sakis3g", 111)
     install_daemon()
-    # reboot
+    os.system('sudo reboot now')
 
 
 if __name__ == '__main__':
-    # make_sure_sudo()
+    make_sure_sudo()
     deploy_software()
-
-
