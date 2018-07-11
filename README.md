@@ -121,5 +121,5 @@ and you will see python3 process running
 
 For view the log on real time use:
 ```sh
-tail -f servicecom.log
+tail -f /tmp/servicecom.log
 ```

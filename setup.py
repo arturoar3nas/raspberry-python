@@ -12,13 +12,8 @@
 
 
 import os
-import sys
 import tarfile
-import errno
 from shutil import copyfile
-
-# null = open(os.devnull,'wb')
-# sys.stdout = null
 
 simple_install = True
 
@@ -107,7 +102,6 @@ def tar():
             print("There was an error opening tarfile. The file might be corrupt or missing.")
 
 
-
 def linecount_1(file):
     return len(open(file).readlines(  ))
 
@@ -135,16 +129,15 @@ def cptodir():
     while i < cp_files.__len__():
         try:
             copyfile(cp_files[i], cp_dest[i])
-            i+=1
         except OSError:
             print('Error copying file')
+        i += 1
 
     for rmsrc in cp_files:
         try:
             os.remove(rmsrc)
         except OSError:
             print('Error removing file')
-
 
 
 def make_sure_sudo():

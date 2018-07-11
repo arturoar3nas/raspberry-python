@@ -16,5 +16,6 @@
   "Aplication": "/home/pi/servicecom/Demo.py",
   "ScanTime": 10,
   "StopScan": 0,
-  "ID": 1
+  "ID": 1,
+  "KEY":"abcdf"
 }
