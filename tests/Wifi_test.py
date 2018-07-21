@@ -6,7 +6,7 @@ from servicecom import Wifi
 class Test(unittest.TestCase):
 
     def test_create(self):
-        Wifi.create()
+        Wifi.network_props()
 
     def test_disconnect(self):
         Wifi.disconnect()
@@ -18,7 +18,7 @@ class Test(unittest.TestCase):
         Wifi.verify()
 
     def test_connection_test(self):
-        Wifi.testConnection()
+        Wifi.test_connection()
 
 
 if __name__ == '__main__':

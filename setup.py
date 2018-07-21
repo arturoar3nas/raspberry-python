@@ -31,7 +31,8 @@ packages_to_install = ['python3',
                        'python-pip',
                        'python-dev',
                        'python3-psutil',
-                       'ppp'
+                       'ppp',
+                       'python3-serial'
                        ]
 cp_files = ["/home/pi/servicecom.py",
             "/home/pi/config.json"

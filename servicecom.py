@@ -11,7 +11,6 @@
 """
 
 import os
-import urllib
 import gpiozero
 from time import sleep
 import psutil
@@ -23,30 +22,44 @@ import atexit
 import signal
 import subprocess
 import ctypes
+import re
+import serial
 
-# Change name process
-lib = ctypes.cdll.LoadLibrary(None)
-prctl = lib.prctl
-prctl.restype = ctypes.c_int
-prctl.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_ulong,
-                  ctypes.c_ulong, ctypes.c_ulong]
+# Directory
+path = dict()
+path['config'] = '/home/pi/servicecom/config.json'
+path['log'] = '/tmp/servicecom.log'
+path['pid'] = '/home/pi/servicecom/servicecom.pid'
+path['pwd'] = '/home/pi/servicecom/servicecom.py'
+path['wpa'] = '/etc/wpa_supplicant/wpa_supplicant.conf'
+path['sys'] = "/home/pi/servicecom/sysinfo.json"
+path['net'] = '/home/pi/servicecom/networks.json'
 
-
-def set_proctitle(new_title):
-    result = prctl(15, new_title, 0, 0, 0)
-    if result != 0:
-        raise OSError("prctl result: %d" % result)
-
-
-set_proctitle(b'servicecom.py')
 
 # create logger with 'spam_application'
-logger = logging.getLogger('/home/pi/servicecom/servicecom.py')
+logger = logging.getLogger(path['pwd'])
 logger.setLevel(logging.DEBUG)
 
 # change this value based on which GPIO port the relay is connected to
 # for modem managed
 PWR_PIN = 5
+
+
+class ProcName:
+    def __init__(self):
+        return
+
+    @staticmethod
+    def set(new_title):
+        # Change name process
+        lib = ctypes.cdll.LoadLibrary(None)
+        prctl = lib.prctl
+        prctl.restype = ctypes.c_int
+        prctl.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_ulong,
+                          ctypes.c_ulong, ctypes.c_ulong]
+        result = prctl(15, new_title, 0, 0, 0)
+        if result != 0:
+            raise OSError("prctl result: %d" % result)
 
 
 class Daemon:
@@ -194,23 +207,24 @@ class MyDaemon(Daemon):
         timeout = conf.data["ScanTime"]
         logger.info("Time Scan %d" % timeout)
         modem = Modem()
-        com = ThrdGnrt()
+        com = GPRS()
         wd = Wacthdogapp()
         sysinfo = Sysinfo()
         com.start()  # start communication
         wifi = Wifi()
         if conf.data["Flags"]["Wifi"] == "1":
-            wifi.create()
+            wifi.network_props(conf)
             logger.info("Starting Wifi...")
         else:
             logger.info("Wifi Disabled")
 
-        configmonitor = File('/home/pi/servicecom/config.json')
+        configmonitor = File(path['config'])
+
         while True:
             try:
                 time.sleep(timeout)
 
-                if conf.data["Flags"]["3G"] == 1:
+                if conf.data["Flags"]["3G"] == "1":
                     logger.info("check the 3g connection")
                     # Then we check the 3g connection
                     status_3g = com.testconnection()
@@ -230,7 +244,7 @@ class MyDaemon(Daemon):
                             com.start()
                             err_com = 0
 
-                if conf.data["StopScan"] == 0:
+                if conf.data["StopScan"] == "0":
                     logger.info("check if the app still running")
                     # the next stuff by do is check if the app still running
                     app = wd.getstatusapp()
@@ -244,34 +258,43 @@ class MyDaemon(Daemon):
                 # Finally checked the system and put this info in the log
                 sysinfo.getsysinfo()
 
-                # # if wi-fi flag it's enabled
-                # if conf.data["Flags"]["Wifi"] == 1:
-                #     # check connection wi-fi
-                #     status_wifi = wifi.testConnection()
-                #     if not status_wifi & conf.statuswifi:
-                #         wifi.reconnect()
-                #
-                #     if not status_wifi:
-                #         # if not connect then disconnect and connect the interface
-                #         wifi.disconnect()
-                #         sleep(2)
-                #         wifi.reconnect()
-                # # else wifi flag it's disabled disconnect the wlan0 interface
-                # else:
-                #     # Check to not disable all time
-                #     if conf.statuswifi:
-                #         wifi.disconnect()
+                # if wi-fi flag it's enabled
+                if conf.data["Flags"]["Wifi"] == "1":
+
+                    # check the setting
+                    ssid, psw = wifi.verify()
+                    logger.info("ssid = %r  psw = %r" % (ssid, psw))
+                    if ssid or psw is True:
+                        # change config
+                        wifi.network_props(conf)
+
+                    # check connection wi-fi
+                    status_wifi = wifi.test_connection()
+
+                    if not status_wifi:
+                        # if not connect then disconnect and connect the interface
+                        wifi.disconnect()
+                        sleep(2)
+                        wifi.reconnect()
 
                 logger.info("veryfy json")
                 if configmonitor.verify():
                     conf.load()
                     timeout = conf.data["ScanTime"]
                     logger.info("Time Scan %d" % timeout)
-                    # in case the flies
-                    # if conf.data["Flags"]["Wifi"] == 1:
-                    #   wifi.verify()
-            except:
-                logger.error("Unexpected erro in run")
+
+                    if conf.data["Flags"]["Wifi"] == "0":
+                        wifi.disconnect()
+
+                    if conf.data["Flags"]["3G"] == "0":
+                        com.stop()
+                        sleep(1)
+                        modem.stop()
+
+            except Exception as e:
+                # THis will catch any exception!
+                logger.error("Something terrible happened %s" % e)
+                sys.exit(2)
 
 
 class Modem:
@@ -303,7 +326,7 @@ class Modem:
             sleep(0.1)
             self.pwr.on()
             logger.info("Start modem...")
-        except:
+        except Exception:
             logger.error("unexpected error stating Modem GPIO")
 
         return
@@ -317,12 +340,12 @@ class Modem:
             sleep(1)
             self.pwr.off()
             logger.info("Off modem...")
-        except:
+        except Exception:
             logger.error("unexpected error stoping Modem GPIO")
         return
 
 
-class ThrdGnrt:
+class GPRS:
     """
     Brief:
      3G communication managed
@@ -358,7 +381,7 @@ class ThrdGnrt:
         except subprocess.CalledProcessError as e:
             logger.error("Error starting Modem")
             print(e)
-        except:
+        except Exception:
             logger.error("Unexpected error... starting 3g comunnication")
         return
 
@@ -366,7 +389,7 @@ class ThrdGnrt:
         logger.info("Stoping 3g Com")
         try:
             os.system("sudo /usr/bin/modem3g/sakis3g disconnect")
-        except:
+        except OSError:
             logger.error("Unexpected error... stoping 3g communication")
         return
 
@@ -413,6 +436,14 @@ class ThrdGnrt:
         else:
             logger.info("ping ok!")
             return True
+
+    def talk(self):
+        ser = serial.Serial(port='ttyUSB0', baudrate=115200, bytesize=8, parity='N', stopbits=1, timeout=1,
+                            rtscts=False, dsrdtr=False)
+        cmd = "AT\r"
+        ser.write(cmd.encode())
+        msg = ser.read(64)
+        print(msg)
 
 
 class Wacthdogapp:
@@ -480,23 +511,23 @@ class Sysinfo:
         return
 
     def createjson(self):
-        data["Active Memory"] = self.mem.active
-        data["Available Memory"] = self.mem.available
-        data["Buffer Memory"] = self.mem.buffers
-        data["Cached Memory"] = self.mem.cached
-        data["Free Memory"] = self.mem.free
-        data["Inactive Memory"] = self.mem.inactive
-        data["Total Memory"] = self.mem.total
+        data["ActiveMemory"] = self.mem.active
+        data["AvailableMemory"] = self.mem.available
+        data["BufferMemory"] = self.mem.buffers
+        data["CachedMemory"] = self.mem.cached
+        data["FreeMemory"] = self.mem.free
+        data["InactiveMemory"] = self.mem.inactive
+        data["TotalMemory"] = self.mem.total
         data['diskfree'] = self.disk.free
         data['diskused'] = self.disk.used
         data['disktotal'] = self.disk.total
-        data['Cpu Percent'] = self.cpu
+        data['CpuPercent'] = self.cpu
         self.str = json.dumps(data)
         self.writejson()
         return
 
     def writejson(self):
-        fjson = open("/home/pi/servicecom/sysinfo.json", "w+")
+        fjson = open(path['sys'], "w+")
         fjson.write(self.str)
         fjson.close()
         return
@@ -515,7 +546,7 @@ class Config:
     def load(self):
         # Load data from config.json
         try:
-            with open('/home/pi/servicecom/config.json') as f:
+            with open(path['config']) as f:
                 self.data = json.load(f)
         except IOError as e:
             print("I/O error({0}): {1}".format(e.errno, e.strerror))
@@ -593,6 +624,27 @@ class File:
 
         return False
 
+    def rplcinfile(self, file, oldstr1, str):
+        logger.info("file: %s" % file)
+        logger.info("strl: %s" % str)
+        try:
+            with open(file, 'r+') as file1:
+                read_data = file1.read()
+                if oldstr1 in read_data:
+                    file_new = read_data.replace(oldstr1, str)
+                    file1.close()
+                    file1 = open(file,'w')
+                    file1.write(file_new)
+                    file1.close()
+                    logger.info("file new: %s" %file_new)
+                    logger.info("file old: %s" % read_data)
+                    return True
+
+        except IOError:
+            logger.error("Can't open file %s" % file)
+            sys.exit(2);
+        return False
+
 
 class Wifi:
     """
@@ -607,72 +659,187 @@ class Wifi:
     """
 
     def __init__(self):
-        conf = Config.getInstance()
-        self.password = conf.data["Wifi"]["Psw"]
-        self.ssid = conf.data["Wifi"]["SSID"]
+        self.password = None
+        self.ssid = None
+        self.oldssid = None
+        self.oldpassword = None
         return
 
-    def create(self):
+    def getsetup(self):
         try:
-            logger.info("Seteando wpa_supplicant")
-            os.system(
-                "echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
+            with open(path['wpa'], 'rt') as file1:
+                read_data = file1.read()
+                lines = read_data.split('\n')
+                for line in lines:
+                    if 'psk' in line:
+                        str = line.replace('psk=', '').replace('"', '')
+                        self.oldpassword = str
+                        logger.info(self.oldpassword)
+                    if 'ssid' in line:
+                        str = line.replace('ssid=', '').replace('"', '')
+                        self.oldssid = str
+                        logger.info(self.oldssid)
+                return True
+        except IOError:
+            logger.error("Can't open file ")
+            sys.exit(2);
+
+        return False
+
+    def network_props(self, conf):
+        try:
+            self.password = conf.data["Wifi"]["Psw"]
+            self.ssid = conf.data["Wifi"]["SSID"]
+
+            # if exist the temporary file
+            self.getsetup()
+            file = File(path['wpa'])
+            retpsw = file.rplcinfile(path['wpa'], self.oldpassword, self.password)
+            retssid = file.rplcinfile(path['wpa'], self.oldssid, self.ssid)
+            if retpsw or retssid is False:
+                #  then we set the config
+                os.system(
+                    "echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' \
+                    | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
+
+
             logger.info("Reconfigure supplicant wlan0")
             os.system("wpa_cli -i wlan0 reconfigure")
             logger.info("done! wlan0")
-        except:
-            logger.error("Error wlan0 config")
-            sys.exit(2);
+        except IOError as e:
+            logger.error("Error writing wpa_supplicant.conf")
+            logger.error(e)
+        except OSError as e:
+            logger.error("OS Error setting wpa_supplicant")
+            logger.error(e)
 
         return
 
-    def disconnect(self):
+    @staticmethod
+    def disconnect():
         os.system("sudo ifconfig wlan0 down")
         logger.info("disconect ifconfig wlan0 down")
         return
 
-    def reconnect(self):
+    @staticmethod
+    def reconnect():
         os.system("sudo ifconfig wlan0 up")
         logger.info("reconect ifconfig wlan0 down")
         return
 
-    def testConnection(self):
+    @staticmethod
+    def test_connection():
+        err = 0
         try:
-            url = "https://www.google.com"
-            urllib.urlopen(url)
-            status = "Wi-Fi Connected"
-        except:
-            status = "Wi-Fi not connected"
-        logger.error(status)
-        if status == "Connected":
-            return True
-        else:
+            for i in range(1, 10):  # try 10 time
+                response = os.system("ping -c 1 -i 0.2 www.google.cl")
+                if response == 0:
+                    logger.debug("ping ok!")
+                else:
+                    logger.error("ping fail")
+                    err = err + 1
+        except Exception as e:
+            logger.error("Can't do ping!")
+            logger.error(e)
             return False
 
-    def verify(self):
+        if err > 5:
+            logger.info("ping fail!")
+            return False
+        else:
+            logger.info("ping ok!")
+            return True
+
+    @staticmethod
+    def verify():
         try:
-            wpa_supplicant = '/etc/wpa_supplicant/wpa_supplicant.conf'
+            wpa_supplicant = path['wpa']
             conf = Config.getInstance()
 
             # check if the wpa_supplicant network object exist
             ssid = File.parsefilecmp(wpa_supplicant, "    ssid=\"" + conf.data["Wifi"]["SSID"] + "\"")
             psw = File.parsefilecmp(wpa_supplicant, "    psk=\"" + conf.data["Wifi"]["Psw"] + "\"")
 
-        except:
-            logger.error("Can't verify wifi settings")
-            sys.exit(2);
+        except Exception as e:
+            logger.error("Can't verify wifi settings %s" % e)
 
         return ssid, psw
+
+    def getWiFiList(self):
+        """Get a list of WiFi networks"""
+
+        proc = subprocess.Popen('iwlist scan 2>/dev/null', shell=True, stdout=subprocess.PIPE, )
+        stdout_str = proc.communicate()[0]
+        stdout_list = stdout_str.decode().split('\n')
+
+        networks = []
+
+        network = {}
+        for line in stdout_list:
+            line = line.strip()
+            match = re.search('Address: (\S+)', line)
+            if match:
+                if len(network):
+                    networks.append(network)
+                network = {}
+                network["mac"] = match.group(1)
+
+            match = re.search('ESSID:"(\S+)"', line)
+            if match:
+                network["ssid"] = match.group(1)
+
+            # Quality=31/70  Signal level=-79 dBm
+            match = re.search('Quality=([0-9]+)\/([0-9]+)[ \t]+Signal level=([0-9-]+) dBm', line)
+            if match:
+                network["quality"] = match.group(1)
+                network["quality@scale"] = match.group(2)
+                network["dbm"] = match.group(3)
+
+            # Encryption key:on
+            match = re.search('Encryption key:(on|.+)', line)
+            if match:
+                network["encryption"] = match.group(1)
+
+            # Channel:1
+            match = re.search('Channel:([0-9]+)', line)
+            if match:
+                network["channel"] = match.group(1)
+
+            # Frequency:2.412 GHz (Channel 1)
+            match = re.search('Frequency:([0-9\.]+) GHz', line)
+            if match:
+                network["freq"] = match.group(1)
+
+        if len(network):
+            networks.append(network)
+
+        strjson = json.dumps(networks, indent=4, sort_keys=True)
+        fjson = open(path['net'], "w+")
+        fjson.write(strjson)
+        fjson.close()
+
+
+class LoadingBar:
+    def __init__(self):
+        return
+
+    @staticmethod
+    def start(seconds):
+        for i in range(0, seconds):
+            percent = float(i) / seconds
+            hashes = '#' * int(round(percent * seconds))
+            spaces = ' ' * (seconds - len(hashes))
+            logger.info("\rStarting Daemon Percent: [{0}] {1}%".format(hashes + spaces, int(round(percent * 100))))
+            time.sleep(1)
 
 
 if __name__ == "__main__":
 
-    with open('/home/pi/servicecom/config.json') as f:
-        data = json.load(f)
-    s = Config(data)
+    # Change process name
+    ProcName.set(b'servicecom.py')
 
     # create file handler which logs even debug messages
-    fh = logging.FileHandler('/tmp/servicecom.log')
+    fh = logging.FileHandler(path['log'])
     ch = logging.StreamHandler()
     fh.setLevel(logging.INFO)
     ch.setLevel(logging.INFO)
@@ -683,16 +850,22 @@ if __name__ == "__main__":
     # add the handlers to the logger
     logger.addHandler(fh)
     logger.addHandler(ch)
-    logger.debug(json.dumps(s.data))
 
-    for i in range(0, 10):
-        percent = float(i) / 10
-        hashes = '#' * int(round(percent * 10))
-        spaces = ' ' * (10 - len(hashes))
-        logger.info("\rStarting Daemon Percent: [{0}] {1}%".format(hashes + spaces, int(round(percent * 100))))
-        time.sleep(1)
+    try:
+        with open(path['config']) as f:
+            data = json.load(f)
+    except IOError:
+        logger.error("Can't open config.json")
+        sys.exit(2)
 
-    # daemon = MyDaemon('/home/pi/servicecom/servicecom.pid')
+    # load config data
+    s = Config(data)
+    # logger.info(json.dumps(s.data))
+
+    # wait 10 senconds before start daemon
+    # LoadingBar.start(10)
+
+    # daemon = MyDaemon(path['pid'])
     # if len(sys.argv) == 2:
     #     if 'start' == sys.argv[1]:
     #         daemon.start()
@@ -707,8 +880,10 @@ if __name__ == "__main__":
     #     sys.exit(0)
     # else:
     #     print("usage: %s start|stop|restart" % sys.argv[0])
-    #     sys.exit(2)
-    wifi = Wifi()
-    wifi.create()
-    # ssid, psw = wifi.verify()
-    # logger.info("ssid = %r  psw = %r" % (ssid, psw))
+    #
+    # com = GPRS()
+    # com.talk()
+
+    sys.exit(2)
+
+
