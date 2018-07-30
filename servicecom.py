@@ -22,8 +22,8 @@ import atexit
 import signal
 import subprocess
 import ctypes
-import re
 import serial
+import re
 
 # Directory
 path = dict()
@@ -33,8 +33,7 @@ path['pid'] = '/home/pi/servicecom/servicecom.pid'
 path['pwd'] = '/home/pi/servicecom/servicecom.py'
 path['wpa'] = '/etc/wpa_supplicant/wpa_supplicant.conf'
 path['sys'] = "/home/pi/servicecom/sysinfo.json"
-path['net'] = '/home/pi/servicecom/networks.json'
-
+path['sim'] = '/home/pi/servicecom/simstatus.json'
 
 # create logger with 'spam_application'
 logger = logging.getLogger(path['pwd'])
@@ -173,7 +172,7 @@ class Daemon:
                 if os.path.exists(self.pidfile):
                     os.remove(self.pidfile)
             else:
-                print(str(err.args))
+                logger.error(str(err.args))
                 sys.exit(1)
 
     def restart(self):
@@ -205,7 +204,7 @@ class MyDaemon(Daemon):
         conf = Config.getInstance()
         err_com = 0
         timeout = conf.data["ScanTime"]
-        logger.info("Time Scan %d" % timeout)
+        logger.info("Time Scan %s" % timeout)
         modem = Modem()
         com = GPRS()
         wd = Wacthdogapp()
@@ -218,17 +217,19 @@ class MyDaemon(Daemon):
         else:
             logger.info("Wifi Disabled")
 
-        configmonitor = File(path['config'])
+        configmonitor = File(str(path['config']))
 
         while True:
             try:
-                time.sleep(timeout)
+                logger.info("wait...")
+                time.sleep(int(timeout))
 
                 if conf.data["Flags"]["3G"] == "1":
                     logger.info("check the 3g connection")
                     # Then we check the 3g connection
                     status_3g = com.testconnection()
-
+                    # get the network info
+                    com.query()
                     # Fail communication
                     if not status_3g:
                         err_com += 1
@@ -264,9 +265,9 @@ class MyDaemon(Daemon):
                     # check the setting
                     ssid, psw = wifi.verify()
                     logger.info("ssid = %r  psw = %r" % (ssid, psw))
-                    if ssid or psw is True:
+                    # if ssid or psw is True:
                         # change config
-                        wifi.network_props(conf)
+                        # wifi.network_props(conf)
 
                     # check connection wi-fi
                     status_wifi = wifi.test_connection()
@@ -281,7 +282,7 @@ class MyDaemon(Daemon):
                 if configmonitor.verify():
                     conf.load()
                     timeout = conf.data["ScanTime"]
-                    logger.info("Time Scan %d" % timeout)
+                    logger.info("Time Scan %s" % timeout)
 
                     if conf.data["Flags"]["Wifi"] == "0":
                         wifi.disconnect()
@@ -357,6 +358,7 @@ class GPRS:
 
     def __init__(self):
         logger.info("Create 3g Com")
+        self.data = None
         return
 
     def start(self):
@@ -380,7 +382,7 @@ class GPRS:
             logger.info("Sucess Modem 3g")
         except subprocess.CalledProcessError as e:
             logger.error("Error starting Modem")
-            print(e)
+            logger.error(e)
         except Exception:
             logger.error("Unexpected error... starting 3g comunnication")
         return
@@ -411,7 +413,7 @@ class GPRS:
         try:
             proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"], shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         except subprocess.CalledProcessError as e:
-            print(e.output)
+            logger.error(e.output)
 
         if proc.find(mystr) > 0:
             logger.info("Modem ok status")
@@ -437,14 +439,6 @@ class GPRS:
             logger.info("ping ok!")
             return True
 
-    def talk(self):
-        ser = serial.Serial(port='ttyUSB0', baudrate=115200, bytesize=8, parity='N', stopbits=1, timeout=1,
-                            rtscts=False, dsrdtr=False)
-        cmd = "AT\r"
-        ser.write(cmd.encode())
-        msg = ser.read(64)
-        print(msg)
-
 
 class Wacthdogapp:
     """
@@ -464,17 +458,21 @@ class Wacthdogapp:
 
     def getstatusapp(self):
         # Ask by the process
-        for proc in psutil.process_iter():
-            pid = psutil.Process(proc.pid)  # Get the process info using PID
-            pname = proc.name()  # Here is the process name
+        try:
+            for proc in psutil.process_iter():
+                pid = psutil.Process(proc.pid)  # Get the process info using PID
+                pname = proc.name()  # Here is the process name
 
-            if pname == self.proc_name:
-                logger.info("Process ok!")
-                logger.info(pid)
-                return True
+                if pname == self.proc_name:
+                    logger.info("Process ok!")
+                    logger.info(pid)
+                    return True
 
-        # if not appear the process
-        logger.error("Process shut down")
+            # if not appear the process
+            logger.error("Process shut down")
+        except Exception as e:
+            # THis will catch any exception!
+            logger.error("Something terrible happened %s" % e)
         return False
 
     def startapp(self):
@@ -549,11 +547,11 @@ class Config:
             with open(path['config']) as f:
                 self.data = json.load(f)
         except IOError as e:
-            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+            logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
         except ValueError:
-            print("Could not convert data to an integer.")
+            logger.error("Could not convert data to an integer.")
         except:
-            print("Unexpected error:", sys.exc_info()[0])
+            logger.error("Unexpected error:", sys.exc_info()[0])
             raise
         logger.info("Load done!")
         return
@@ -765,59 +763,6 @@ class Wifi:
 
         return ssid, psw
 
-    def getWiFiList(self):
-        """Get a list of WiFi networks"""
-
-        proc = subprocess.Popen('iwlist scan 2>/dev/null', shell=True, stdout=subprocess.PIPE, )
-        stdout_str = proc.communicate()[0]
-        stdout_list = stdout_str.decode().split('\n')
-
-        networks = []
-
-        network = {}
-        for line in stdout_list:
-            line = line.strip()
-            match = re.search('Address: (\S+)', line)
-            if match:
-                if len(network):
-                    networks.append(network)
-                network = {}
-                network["mac"] = match.group(1)
-
-            match = re.search('ESSID:"(\S+)"', line)
-            if match:
-                network["ssid"] = match.group(1)
-
-            # Quality=31/70  Signal level=-79 dBm
-            match = re.search('Quality=([0-9]+)\/([0-9]+)[ \t]+Signal level=([0-9-]+) dBm', line)
-            if match:
-                network["quality"] = match.group(1)
-                network["quality@scale"] = match.group(2)
-                network["dbm"] = match.group(3)
-
-            # Encryption key:on
-            match = re.search('Encryption key:(on|.+)', line)
-            if match:
-                network["encryption"] = match.group(1)
-
-            # Channel:1
-            match = re.search('Channel:([0-9]+)', line)
-            if match:
-                network["channel"] = match.group(1)
-
-            # Frequency:2.412 GHz (Channel 1)
-            match = re.search('Frequency:([0-9\.]+) GHz', line)
-            if match:
-                network["freq"] = match.group(1)
-
-        if len(network):
-            networks.append(network)
-
-        strjson = json.dumps(networks, indent=4, sort_keys=True)
-        fjson = open(path['net'], "w+")
-        fjson.write(strjson)
-        fjson.close()
-
 
 class LoadingBar:
     def __init__(self):
@@ -831,6 +776,167 @@ class LoadingBar:
             spaces = ' ' * (seconds - len(hashes))
             logger.info("\rStarting Daemon Percent: [{0}] {1}%".format(hashes + spaces, int(round(percent * 100))))
             time.sleep(1)
+
+
+class AtCommand:
+    def __init__(self):
+        self.rssi_table = dict()
+        self.rssi_table['2'] = '-109'
+        self.rssi_table['3'] = '-107'
+        self.rssi_table['4'] = '-105'
+        self.rssi_table['5'] = '-103'
+        self.rssi_table['6'] = '-101'
+        self.rssi_table['7'] = '-99'
+        self.rssi_table['8'] = '-97'
+        self.rssi_table['9'] = '-95'
+        self.rssi_table['10'] = '-93'
+        self.rssi_table['11'] = '-91'
+        self.rssi_table['12'] = '-89'
+        self.rssi_table['13'] = '-87'
+        self.rssi_table['14'] = '-85'
+        self.rssi_table['15'] = '-83'
+        self.rssi_table['16'] = '-81'
+        self.rssi_table['17'] = '-79'
+        self.rssi_table['18'] = '-77'
+        self.rssi_table['19'] = '-75'
+        self.rssi_table['20'] = '-73'
+        self.rssi_table['21'] = '-71'
+        self.rssi_table['22'] = '-69'
+        self.rssi_table['23'] = '-67'
+        self.rssi_table['24'] = '-65'
+        self.rssi_table['25'] = '-63'
+        self.rssi_table['26'] = '-61'
+        self.rssi_table['27'] = '-59'
+        self.rssi_table['28'] = '-57'
+        self.rssi_table['29'] = '-55'
+        self.rssi_table['30'] = '-53'
+
+        self.ser = None
+        self.data = None
+        return
+
+    def getrssi(self):
+        lines = self.sendcomd(b'AT+CSQ\r')
+        for line in lines:
+            if '+CSQ' in line:
+                try:
+                    str = line.replace('\r', '').replace('+CSQ:', '')
+                    print(str)
+                    strstr = str.split(',')
+                    for s in strstr:
+                        self.data['Signal'] = self.rssi_table['8']
+                        break
+                except ValueError:
+                    logger.error("Could not convert data to an integer.")
+                except:
+                    logger.error("Unexpected error:", sys.exc_info()[0])
+                    raise
+        return
+
+    def getImei(self):
+        lines = self.sendcomd(b'AT+CGSN\r')
+        for i, line in enumerate(lines):
+            if i == 1:
+                try:
+                    self.data['IMEI'] = line.replace('\r', '')
+                except ValueError:
+                    logger.error("Could not convert data to an integer.")
+                except:
+                    logger.error("Unexpected error:", sys.exc_info()[0])
+                    raise
+        return
+
+    def gettype(self):
+        return
+
+    def getstatus(self):
+        lines = self.sendcomd(b'AT+CREG?\r')
+        for line in lines:
+            if '+CREG' in line:
+                try:
+                    str = line.replace('\r', '').replace('+COPS:', '')
+                    strstr = str.split(',')
+                    self.data['Status'] = strstr[0]
+                except ValueError:
+                    logger.error("Could not convert data to an integer.")
+                except:
+                    logger.error("Unexpected error:", sys.exc_info()[0])
+                    raise
+        return
+
+    def getroaming(self):
+        return
+
+    def getnetwork(self):
+        lines = self.sendcomd(b'AT+COPS?\r')
+        for line in lines:
+            if '+COPS' in line:
+                try:
+                    str = line.replace('\r', '').replace('+COPS:', '')
+                    list = re.findall(r'"([^"]*)"', str)
+                    for l in list:
+                        self.data['Red'] = l
+                except ValueError:
+                    logger.error("Could not convert data to an integer.")
+                except:
+                    logger.error("Unexpected error:", sys.exc_info()[0])
+                    raise
+        return
+
+    def query(self):
+        self.opentty()
+        self.load()
+        self.getImei()
+        self.getrssi()
+        self.getstatus()
+        self.gettype()
+        self.getroaming()
+        self.getnetwork()
+        self.savejson()
+        return
+
+    def opentty(self):
+        try:
+            self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=1,
+                            rtscts=True, dsrdtr=True)
+        except Exception as e:
+            logger.error(e)
+            return
+
+    def sendcomd(self, cmd):
+        self.ser.write(cmd)
+        msg = self.ser.read(64)
+        lines = msg.decode().split('\n')
+        return lines
+
+    def savejson(self):
+        try:
+            fjson = open(path['sim'], "w+")
+            fjson.write(json.dumps(self.data, indent=4, sort_keys=True))
+            fjson.close()
+        except IOError as e:
+            logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            logger.error("Could not convert data to an integer.")
+        except:
+            logger.error("Unexpected error:", sys.exc_info()[0])
+            raise
+        return
+
+    def load(self):
+        try:
+            with open(path['sim']) as f:
+                self.data = json.load(f)
+                logger.info(self.data)
+                f.close()
+        except IOError as e:
+            logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            logger.error("Could not convert data to an integer.")
+        except:
+            logger.error("Unexpected error:", sys.exc_info()[0])
+            raise
+        return
 
 
 if __name__ == "__main__":
@@ -862,12 +968,11 @@ if __name__ == "__main__":
     s = Config(data)
     # logger.info(json.dumps(s.data))
 
-    # wait 10 senconds before start daemon
-    # LoadingBar.start(10)
-
     # daemon = MyDaemon(path['pid'])
     # if len(sys.argv) == 2:
     #     if 'start' == sys.argv[1]:
+    #         # wait 10 seconds before start daemon
+    #         LoadingBar.start(10)
     #         daemon.start()
     #     elif 'stop' == sys.argv[1]:
     #         daemon.stop()
@@ -880,10 +985,9 @@ if __name__ == "__main__":
     #     sys.exit(0)
     # else:
     #     print("usage: %s start|stop|restart" % sys.argv[0])
-    #
-    # com = GPRS()
-    # com.talk()
 
-    sys.exit(2)
-
+    # m = Modem()
+    # m.start()
+    at = AtCommand()
+    at.query()
 
