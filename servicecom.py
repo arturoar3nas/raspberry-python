@@ -208,14 +208,10 @@ class MyDaemon(Daemon):
         modem = Modem()
         com = GPRS()
         wd = Wacthdogapp()
+        at = AtCommand()
         sysinfo = Sysinfo()
         com.start()  # start communication
         wifi = Wifi()
-        if conf.data["Flags"]["Wifi"] == "1":
-            wifi.network_props(conf)
-            logger.info("Starting Wifi...")
-        else:
-            logger.info("Wifi Disabled")
 
         configmonitor = File(str(path['config']))
 
@@ -224,12 +220,15 @@ class MyDaemon(Daemon):
                 logger.info("wait...")
                 time.sleep(int(timeout))
 
-                if conf.data["Flags"]["3G"] == "1":
+                if conf.data["Flags"]["3G"] == 1:
                     logger.info("check the 3g connection")
                     # Then we check the 3g connection
                     status_3g = com.testconnection()
+
                     # get the network info
-                    com.query()
+                    logger.info("Query at commands")
+                    at.query()
+
                     # Fail communication
                     if not status_3g:
                         err_com += 1
@@ -245,10 +244,11 @@ class MyDaemon(Daemon):
                             com.start()
                             err_com = 0
 
-                if conf.data["StopScan"] == "0":
+                if conf.data["StopScan"] == 0:
                     logger.info("check if the app still running")
                     # the next stuff by do is check if the app still running
-                    app = wd.getstatusapp()
+                    app, conf.data = wd.getstatusapp()
+                    print(json.dumps(conf.data))
 
                     # if the app is stop
                     if not app:
@@ -260,18 +260,12 @@ class MyDaemon(Daemon):
                 sysinfo.getsysinfo()
 
                 # if wi-fi flag it's enabled
-                if conf.data["Flags"]["Wifi"] == "1":
-
+                if conf.data["Flags"]["Wifi"] == 1:
                     # check the setting
                     ssid, psw = wifi.verify()
                     logger.info("ssid = %r  psw = %r" % (ssid, psw))
-                    # if ssid or psw is True:
-                        # change config
-                        # wifi.network_props(conf)
-
                     # check connection wi-fi
                     status_wifi = wifi.test_connection()
-
                     if not status_wifi:
                         # if not connect then disconnect and connect the interface
                         wifi.disconnect()
@@ -283,6 +277,7 @@ class MyDaemon(Daemon):
                     conf.load()
                     timeout = conf.data["ScanTime"]
                     logger.info("Time Scan %s" % timeout)
+                    logger.info(json.dumps(conf.data))
 
                     if conf.data["Flags"]["Wifi"] == "0":
                         wifi.disconnect()
@@ -354,6 +349,7 @@ class GPRS:
         1) do ping to www.google.cl
         2) ask to modem the status
         both return a bool if the connection it's ok
+    This class use ttyUSB3
     """
 
     def __init__(self):
@@ -465,19 +461,37 @@ class Wacthdogapp:
 
                 if pname == self.proc_name:
                     logger.info("Process ok!")
+                    self.conf.data['StatusApp'] = 'Proceso Ok'
                     logger.info(pid)
-                    return True
+                    self.savejson()
+                    return True, self.conf.data
 
             # if not appear the process
             logger.error("Process shut down")
+            self.conf.data['StatusApp'] = 'Proceso suspendido'
+            self.savejson()
         except Exception as e:
             # THis will catch any exception!
             logger.error("Something terrible happened %s" % e)
-        return False
+        return False, self.conf.data
 
     def startapp(self):
         logger.info("Starting WolkeCounter")
         os.system("sudo python3 %s &" % self.proc_path_name)
+        return
+
+    def savejson(self):
+        try:
+            fjson = open(path['config'], "w+")
+            fjson.write(json.dumps(self.conf.data, indent=4, sort_keys=True))
+            fjson.close()
+        except IOError as e:
+            logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            logger.error("Could not convert data to an integer.")
+        except:
+            logger.error("Unexpected error:", sys.exc_info()[0])
+            raise
         return
 
 
@@ -765,6 +779,12 @@ class Wifi:
 
 
 class LoadingBar:
+    """
+    Brief: This class create a load bar in command prompt
+
+    Usage:
+        just invoke start method and pass a integer with the seconds to wait
+    """
     def __init__(self):
         return
 
@@ -779,58 +799,86 @@ class LoadingBar:
 
 
 class AtCommand:
+    """
+    Brief: This class managed use cmd AT for talk with the modem
+
+    Usage:
+        query: get info about rssi, IMEI, network type, network status,
+        roaming status and about the apn
+        If you need try a new AT cmd use this line:
+        # sudo chat -V -s '' 'AT+CIPSTART=?' 'OK' '' > /dev/ttyUSB2 < /dev/ttyUSB2
+        This class use ttyUSB2
+    """
+
     def __init__(self):
-        self.rssi_table = dict()
-        self.rssi_table['2'] = '-109'
-        self.rssi_table['3'] = '-107'
-        self.rssi_table['4'] = '-105'
-        self.rssi_table['5'] = '-103'
-        self.rssi_table['6'] = '-101'
-        self.rssi_table['7'] = '-99'
-        self.rssi_table['8'] = '-97'
-        self.rssi_table['9'] = '-95'
-        self.rssi_table['10'] = '-93'
-        self.rssi_table['11'] = '-91'
-        self.rssi_table['12'] = '-89'
-        self.rssi_table['13'] = '-87'
-        self.rssi_table['14'] = '-85'
-        self.rssi_table['15'] = '-83'
-        self.rssi_table['16'] = '-81'
-        self.rssi_table['17'] = '-79'
-        self.rssi_table['18'] = '-77'
-        self.rssi_table['19'] = '-75'
-        self.rssi_table['20'] = '-73'
-        self.rssi_table['21'] = '-71'
-        self.rssi_table['22'] = '-69'
-        self.rssi_table['23'] = '-67'
-        self.rssi_table['24'] = '-65'
-        self.rssi_table['25'] = '-63'
-        self.rssi_table['26'] = '-61'
-        self.rssi_table['27'] = '-59'
-        self.rssi_table['28'] = '-57'
-        self.rssi_table['29'] = '-55'
-        self.rssi_table['30'] = '-53'
+        self.rssi_dict = dict()
+        self.rssi_dict['2'] = '-109'
+        self.rssi_dict['3'] = '-107'
+        self.rssi_dict['4'] = '-105'
+        self.rssi_dict['5'] = '-103'
+        self.rssi_dict['6'] = '-101'
+        self.rssi_dict['7'] = '-99'
+        self.rssi_dict['8'] = '-97'
+        self.rssi_dict['9'] = '-95'
+        self.rssi_dict['10'] = '-93'
+        self.rssi_dict['11'] = '-91'
+        self.rssi_dict['12'] = '-89'
+        self.rssi_dict['13'] = '-87'
+        self.rssi_dict['14'] = '-85'
+        self.rssi_dict['15'] = '-83'
+        self.rssi_dict['16'] = '-81'
+        self.rssi_dict['17'] = '-79'
+        self.rssi_dict['18'] = '-77'
+        self.rssi_dict['19'] = '-75'
+        self.rssi_dict['20'] = '-73'
+        self.rssi_dict['21'] = '-71'
+        self.rssi_dict['22'] = '-69'
+        self.rssi_dict['23'] = '-67'
+        self.rssi_dict['24'] = '-65'
+        self.rssi_dict['25'] = '-63'
+        self.rssi_dict['26'] = '-61'
+        self.rssi_dict['27'] = '-59'
+        self.rssi_dict['28'] = '-57'
+        self.rssi_dict['29'] = '-55'
+        self.rssi_dict['30'] = '-53'
+
+        self.status_dict = dict()
+        self.status_dict['0'] = 'No registrado'
+        self.status_dict['1'] = 'Registrado'
+        self.status_dict['2'] = 'No registrado, buscando operador'
+        self.status_dict['3'] = 'Registro negado'
+        self.status_dict['4'] = 'Desconocido'
+        self.status_dict['5'] = 'Registrado, roaming'
+        self.status_dict['6'] = 'Registrado, solo SMS'
+        self.status_dict['7'] = 'Registrado solo SMS, roaming'
+        self.status_dict['8'] = 'Solo servicios de Emergencia'
+        self.status_dict['9'] = 'Registrado "CSFB no privilegiado"'
+        self.status_dict['10'] = 'Registrado "CSFB no privilegiado", roaming'
+
+        self.type_dict = dict()
+        self.type_dict['12'] = 'GSM EDGE'
+        self.type_dict['22'] = '3G'
+        self.type_dict['25'] = 'GSM EDGE/3G/LTE'
+        self.type_dict['28'] = 'LTE'
+        self.type_dict['29'] = 'GSM/3G'
+        self.type_dict['30'] = 'GSM/LTE'
+        self.type_dict['31'] = '3G/LTE'
 
         self.ser = None
         self.data = None
         return
 
     def getrssi(self):
-        lines = self.sendcomd(b'AT+CSQ\r')
-        for line in lines:
-            if '+CSQ' in line:
-                try:
-                    str = line.replace('\r', '').replace('+CSQ:', '')
-                    print(str)
-                    strstr = str.split(',')
-                    for s in strstr:
-                        self.data['Signal'] = self.rssi_table['8']
-                        break
-                except ValueError:
-                    logger.error("Could not convert data to an integer.")
-                except:
-                    logger.error("Unexpected error:", sys.exc_info()[0])
-                    raise
+        lines = self.sendcomd(b'AT+CSQ\r')[1]
+        if '+CSQ' in lines:
+            try:
+                index = lines.replace('\r', '').replace('+CSQ:', '').replace(' ', '').split(',')[0]
+                self.data['Signal'] = self.rssi_dict[index]
+            except ValueError:
+                logger.error("Could not convert data to an integer.")
+            except:
+                logger.error("Unexpected error:", sys.exc_info()[0])
+                raise
         return
 
     def getImei(self):
@@ -847,24 +895,45 @@ class AtCommand:
         return
 
     def gettype(self):
+        line = self.sendcomd(b'AT+WS46?\r')[1]
+        try:
+            index = line.replace('\r', '').replace(' ', '').split(',')[0]
+            self.data['Type'] = self.type_dict[index]
+        except ValueError:
+            logger.error("Could not convert data to an integer.")
+        except:
+            logger.error("Unexpected error:", sys.exc_info()[0])
+            raise
+        return
         return
 
     def getstatus(self):
-        lines = self.sendcomd(b'AT+CREG?\r')
-        for line in lines:
-            if '+CREG' in line:
-                try:
-                    str = line.replace('\r', '').replace('+COPS:', '')
-                    strstr = str.split(',')
-                    self.data['Status'] = strstr[0]
-                except ValueError:
-                    logger.error("Could not convert data to an integer.")
-                except:
-                    logger.error("Unexpected error:", sys.exc_info()[0])
-                    raise
+        line = self.sendcomd(b'AT+CREG?\r')[1]
+        if '+CREG:' in line:
+            try:
+                str = line.replace('\r', '').replace('+CREG:', '').replace(' ', '').split(',')
+                self.data['Status'] = self.status_dict[str[0]]
+            except ValueError:
+                logger.error("Could not convert data to an integer.")
+            except:
+                logger.error("Unexpected error:", sys.exc_info()[0])
+                raise
         return
 
     def getroaming(self):
+        line = self.sendcomd(b'AT+CREG?\r')[1]
+        if '+CREG:' in line:
+            try:
+                str = line.replace('\r', '').replace('+CREG:', '').replace(' ', '').split(',')
+                if str[0] == '5' or str[0] == '7' or str[0] == '10':
+                    self.datap['Roaming'] = 'Habilitado'
+                else:
+                    self.data['Roaming'] = 'Deshabilitado'
+            except ValueError:
+                logger.error("Could not convert data to an integer.")
+            except:
+                logger.error("Unexpected error:", sys.exc_info()[0])
+                raise
         return
 
     def getnetwork(self):
@@ -966,28 +1035,25 @@ if __name__ == "__main__":
 
     # load config data
     s = Config(data)
-    # logger.info(json.dumps(s.data))
 
-    # daemon = MyDaemon(path['pid'])
-    # if len(sys.argv) == 2:
-    #     if 'start' == sys.argv[1]:
-    #         # wait 10 seconds before start daemon
-    #         LoadingBar.start(10)
-    #         daemon.start()
-    #     elif 'stop' == sys.argv[1]:
-    #         daemon.stop()
-    #     elif 'restart' == sys.argv[1]:
-    #         daemon.restart()
-    #     else:
-    #         print("Unknown command")
-    #         print("usage: %s start|stop|restart" % sys.argv[0])
-    #         sys.exit(2)
-    #     sys.exit(0)
-    # else:
-    #     print("usage: %s start|stop|restart" % sys.argv[0])
+    daemon = MyDaemon(path['pid'])
+    if len(sys.argv) == 2:
+        if 'start' == sys.argv[1]:
+            # wait 10 seconds before start daemon
+            LoadingBar.start(10)
+            logger.info(json.dumps(s.data))
+            # daemon.start()
+            daemon.run()
+        elif 'stop' == sys.argv[1]:
+            daemon.stop()
+        elif 'restart' == sys.argv[1]:
+            daemon.restart()
+        else:
+            print("Unknown command")
+            print("usage: %s start|stop|restart" % sys.argv[0])
+            sys.exit(2)
+        sys.exit(0)
+    else:
+        print("usage: %s start|stop|restart" % sys.argv[0])
 
-    # m = Modem()
-    # m.start()
-    at = AtCommand()
-    at.query()
 

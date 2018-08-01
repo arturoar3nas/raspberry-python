@@ -16,6 +16,7 @@
   "Aplication": "/home/pi/servicecom/Demo.py",
   "ScanTime": 10,
   "StopScan": 0,
+  "StatusApp": "Proceso Ok",
   "ID": 1,
   "KEY": "abcdf",
   "weight": 0,

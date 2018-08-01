@@ -21,10 +21,10 @@ dirs_to_make = ['/home/pi/servicecom',
                 '/home/pi/servicecom/src',
                 '/usr/bin/modem3g'
                 ]
-things_to_download = ["http://raspberry-at-home.com/files/sakis3g.tar.gz"]
-dir_permission = ["/usr/bin/modem3g"]
+things_to_download = ['http://raspberry-at-home.com/files/sakis3g.tar.gz']
+dir_permission = ['/usr/bin/modem3g']
 type_permission = [777]
-untar_files = ["sakis3g.tar.gz"]
+untar_files = ['sakis3g.tar.gz']
 apt_repos = []
 packages_to_install = ['python3',
                        'python3-gpiozero',
@@ -34,11 +34,11 @@ packages_to_install = ['python3',
                        'ppp',
                        'python3-serial'
                        ]
-cp_files = ["/home/pi/servicecom.py",
-            "/home/pi/config.json"
+cp_files = ['/home/pi/servicecom.py',
+            '/home/pi/config.json'
             ]
-cp_dest = ["/home/pi/servicecom/servicecom.py",
-           "/home/pi/servicecom/config.json"
+cp_dest = ['/home/pi/servicecom/servicecom.py',
+           '/home/pi/servicecom/config.json'
            ]
 
 easy_install_list = []

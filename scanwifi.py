@@ -4,6 +4,16 @@ import subprocess
 import json
 import re
 
+"""
+# @file   scanwifi.py
+# @author Arturo Arenas (arturoar3nas@gmail.com)
+# @date   12/06/18
+# Brief:
+    Scan wifi networks
+  Usage:
+    sudo python3 scanwifi.py
+"""
+
 path = dict()
 path['net'] = '/home/pi/servicecom/networks.json'
 
@@ -24,33 +34,33 @@ def getWiFiList():
             if len(network):
                 networks.append(network)
             network = {}
-            network["mac"] = match.group(1)
+            network["Mac"] = match.group(1)
 
         match = re.search('ESSID:"(\S+)"', line)
         if match:
-            network["ssid"] = match.group(1)
+            network["SSID"] = match.group(1)
 
         # Quality=31/70  Signal level=-79 dBm
         match = re.search('Quality=([0-9]+)\/([0-9]+)[ \t]+Signal level=([0-9-]+) dBm', line)
         if match:
-            network["quality"] = match.group(1)
-            network["quality@scale"] = match.group(2)
-            network["dbm"] = match.group(3)
+            network["Calidad"] = match.group(1)
+            network["Calidad/Escala"] = match.group(2)
+            network["Dbm"] = match.group(3)
 
         # Encryption key:on
         match = re.search('Encryption key:(on|.+)', line)
         if match:
-            network["encryption"] = match.group(1)
+            network["Encriptado"] = match.group(1)
 
         # Channel:1
         match = re.search('Channel:([0-9]+)', line)
         if match:
-            network["channel"] = match.group(1)
+            network["Canal"] = match.group(1)
 
         # Frequency:2.412 GHz (Channel 1)
         match = re.search('Frequency:([0-9\.]+) GHz', line)
         if match:
-            network["freq"] = match.group(1)
+            network["Frecuencia"] = match.group(1)
 
     if len(network):
         networks.append(network)
