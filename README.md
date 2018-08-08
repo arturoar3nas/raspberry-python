@@ -53,6 +53,10 @@ You will need the follows tools:
 
 #### Fast installer
 
+```sh
+sudo apt-get install git
+```
+
 Copy in the below directory: 
 
 ```sh
