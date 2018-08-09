@@ -54,6 +54,7 @@ You will need the follows tools:
 #### Online
 
 ```sh
+sudo apt-get update
 sudo apt-get install git
 ```
 Then
