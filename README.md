@@ -133,7 +133,7 @@ python3 servicecom.py stop
 
 For view the process use:
 ```sh
-sudo ps -A | grep "python3"
+sudo ps -A | grep servicecom.py
 ```
 
 and you will see python3 process running
