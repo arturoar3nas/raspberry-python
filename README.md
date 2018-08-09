@@ -65,6 +65,7 @@ Finally
 ```sh
 $ sudo python3 servicecom/setup.py 
 ```
+If all it's fine, go to usage and enjoy!
 
 #### Offline
 Copy in the below directory: 
