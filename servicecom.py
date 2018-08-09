@@ -9,14 +9,16 @@
   Check the status info and create a json file
   The Documentation of each class it's inside of them
 """
-
-import os
-import gpiozero
+from __future__ import generators
 from time import sleep
+import abc
+import os
+import sys
+if sys.platform == 'linux2' or sys.platform == 'linux':
+    import gpiozero
 import psutil
 import logging
 import json
-import sys
 import time
 import atexit
 import signal
@@ -44,7 +46,22 @@ logger.setLevel(logging.DEBUG)
 PWR_PIN = 5
 
 
-class ProcName:
+def loggerhandler(pathlogger):
+    # create file handler which logs even debug messages
+    fh = logging.FileHandler(pathlogger)
+    ch = logging.StreamHandler()
+    fh.setLevel(logging.INFO)
+    ch.setLevel(logging.INFO)
+    # create formatter and add it to the handlers
+    formatter = logging.Formatter('%(asctime)s - %(funcName)s:%(lineno)d - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    # add the handlers to the logger
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+
+class ProcName(object):
     def __init__(self):
         return
 
@@ -201,99 +218,104 @@ class MyDaemon(Daemon):
     """override method subclass Daemon."""
 
     def run(self):
-        conf = Config.getInstance()
-        err_com = 0
-        timeout = conf.data["ScanTime"]
-        logger.info("Time Scan %s" % timeout)
-        modem = Modem()
-        com = GPRS()
-        wd = Wacthdogapp()
-        at = AtCommand()
-        sysinfo = Sysinfo()
-        com.start()  # start communication
-        wifi = Wifi()
-
-        configmonitor = File(str(path['config']))
+        logger.info("Building RTU")
+        builder = ConcreteBuilder()
+        director = Director()
+        director.setBuilder(builder)
+        self.rtu = director.getProduct()
+        self.rtu.specification()
+        self.rtu.gprs.err = 0
+        self.timeout = self.rtu.conf.data["ScanTime"]
+        logger.info("Time Scan %s" % self.timeout)
 
         while True:
             try:
                 logger.info("wait...")
-                time.sleep(int(timeout))
-
-                if conf.data["Flags"]["3G"] == 1:
-                    logger.info("check the 3g connection")
-                    # Then we check the 3g connection
-                    status_3g = com.testconnection()
-
-                    # get the network info
-                    logger.info("Query at commands")
-                    at.query()
-
-                    # Fail communication
-                    if not status_3g:
-                        err_com += 1
-                        logger.info("Try connections %d" % err_com)
-                        if err_com > 5:
-                            logger.info("Fail communication")
-                            com.stop()
-                            sleep(1)
-                            modem.stop()
-                            sleep(5)  # wait a 5 seconds and...
-                            modem.start()
-                            sleep(1)
-                            com.start()
-                            err_com = 0
-
-                if conf.data["StopScan"] == 0:
-                    logger.info("check if the app still running")
-                    # the next stuff by do is check if the app still running
-                    app, conf.data = wd.getstatusapp()
-                    print(json.dumps(conf.data))
-
-                    # if the app is stop
-                    if not app:
-                        logger.info("app is stop")
-                        wd.startapp()
-
-                logger.info("checked the system and put this info in the log")
-                # Finally checked the system and put this info in the log
-                sysinfo.getsysinfo()
-
-                # if wi-fi flag it's enabled
-                if conf.data["Flags"]["Wifi"] == 1:
-                    # check the setting
-                    ssid, psw = wifi.verify()
-                    logger.info("ssid = %r  psw = %r" % (ssid, psw))
-                    # check connection wi-fi
-                    status_wifi = wifi.test_connection()
-                    if not status_wifi:
-                        # if not connect then disconnect and connect the interface
-                        wifi.disconnect()
-                        sleep(2)
-                        wifi.reconnect()
-
-                logger.info("veryfy json")
-                if configmonitor.verify():
-                    conf.load()
-                    timeout = conf.data["ScanTime"]
-                    logger.info("Time Scan %s" % timeout)
-                    logger.info(json.dumps(conf.data))
-
-                    if conf.data["Flags"]["Wifi"] == "0":
-                        wifi.disconnect()
-
-                    if conf.data["Flags"]["3G"] == "0":
-                        com.stop()
-                        sleep(1)
-                        modem.stop()
-
+                time.sleep(int(self.timeout))
+                self.GprsTask()
+                self.ScanTask()
+                self.SysInfoTask()
+                self.WifiTask()
+                self.PersistenceTask()
             except Exception as e:
                 # THis will catch any exception!
                 logger.error("Something terrible happened %s" % e)
                 sys.exit(2)
 
+    def GprsTask(self):
+        if self.rtu.conf.data["Flags"]["3G"] == 1:
+            logger.info("check the 3g connection")
+            # Then we check the 3g connection
+            status_3g = self.rtu.gprs.testconnection()
 
-class Modem:
+            # get the network info
+            logger.info("Query at commands")
+            self.rtu.at.query()
+
+            # Fail communication
+            if not status_3g:
+                self.rtu.gprs.err += 1
+                logger.info("Try connections %d" % self.rtu.gprs.err)
+                if self.rtu.gprs.err > 5:
+                    logger.info("Fail communication")
+                    self.rtu.gprs.stop()
+                    sleep(1)
+                    self.rtu.modem.stop()
+                    sleep(5)  # wait a 5 seconds and...
+                    self.rtu.modem.start()
+                    sleep(1)
+                    self.rtu.gprs.start()
+                    self.rtu.gprs.err = 0
+
+    def ScanTask(self):
+        if self.rtu.conf.data["StopScan"] == 0:
+            logger.info("check if the app still running")
+            # the next stuff by do is check if the app still running
+            app, self.rtu.conf.data = self.rtu.wd.getstatusapp()
+            print(json.dumps(self.rtu.conf.data))
+
+            # if the app is stop
+            if not app:
+                logger.info("app is stop")
+                self.rtu.wd.startapp()
+
+    def SysInfoTask(self):
+        logger.info("checked the system and put this info in the log")
+        # Finally checked the system and put this info in the log
+        self.rtu.sysinfo.getsysinfo()
+
+    def WifiTask(self):
+        # if wi-fi flag it's enabled
+        if self.rtu.conf.data["Flags"]["Wifi"] == 1:
+            # check the setting
+            ssid, psw = self.rtu.wifi.verify()
+            logger.info("ssid = %r  psw = %r" % (ssid, psw))
+            # check connection wi-fi
+            status_wifi = self.rtu.wifi.test_connection()
+            if not status_wifi:
+                # if not connect then disconnect and connect the interface
+                self.rtu.wifi.disconnect()
+                sleep(2)
+                self.rtu.wifi.reconnect()
+
+    def PersistenceTask(self):
+        logger.info("veryfy json")
+        if self.rtu.configmonitor.verify():
+            self.rtu.conf.load()
+            self.timeout = self.rtu.conf.data["ScanTime"]
+            logger.info("Time Scan %s" % self.timeout)
+            logger.info(json.dumps(self.rtu.conf.data))
+
+            if self.rtu.conf.data["Flags"]["Wifi"] == "0":
+                self.rtu.wifi.disconnect()
+
+            if self.rtu.conf.data["Flags"]["3G"] == "0":
+                self.rtu.gprs.stop()
+                sleep(1)
+                self.rtu.modem.stop()
+
+
+class Modem(object):
     """
     Brief:
     The Modem SIM5320A work using the pins GPIO5 for the power
@@ -341,7 +363,7 @@ class Modem:
         return
 
 
-class GPRS:
+class GPRS(metaclass=abc.ABCMeta):
     """
     Brief:
      3G communication managed
@@ -353,10 +375,56 @@ class GPRS:
     """
 
     def __init__(self):
-        logger.info("Create 3g Com")
         self.data = None
+        self.err = 0
         return
 
+    def factory(type):
+        if type == 'sasky':
+            return Sasky3G()
+        assert 0, "Bad shape creation: " + type
+    factory = staticmethod(factory)
+
+    @abc.abstractmethod
+    def start(self):
+        pass
+
+    @abc.abstractmethod
+    def stop(self):
+        pass
+
+    @abc.abstractmethod
+    def testconnection(self):
+        pass
+
+    @staticmethod
+    def ping():
+        err = 0
+        for i in range(1, 10):  # try 10 time
+            response = os.system("ping -c 1 -i 0.2 www.google.cl")
+            if response == 0:
+                logger.debug("ping ok!")
+            else:
+                logger.error("ping fail")
+                err = err + 1
+        if err > 5:
+            logger.info("ping fail!")
+            return False
+        else:
+            logger.info("ping ok!")
+            return True
+
+
+class Sasky3G(GPRS):
+    """
+    Brief:
+     3G communication managed
+    Usage:
+        1) do ping to www.google.cl
+        2) ask to modem the status
+        both return a bool if the connection it's ok
+    This class use ttyUSB3
+    """
     def start(self):
         try:
             logger.info("Starting 3g com")
@@ -418,25 +486,8 @@ class GPRS:
             logger.info("Modem fail status")
             return False
 
-    @staticmethod
-    def ping():
-        err = 0
-        for i in range(1, 10):  # try 10 time
-            response = os.system("ping -c 1 -i 0.2 www.google.cl")
-            if response == 0:
-                logger.debug("ping ok!")
-            else:
-                logger.error("ping fail")
-                err = err + 1
-        if err > 5:
-            logger.info("ping fail!")
-            return False
-        else:
-            logger.info("ping ok!")
-            return True
 
-
-class Wacthdogapp:
+class Wacthdogapp(object):
     """
     Brief: This class monitoring a app declared at config.json
 
@@ -495,7 +546,7 @@ class Wacthdogapp:
         return
 
 
-class Sysinfo:
+class Sysinfo(object):
     """
     Brief: Get the system information
 
@@ -545,7 +596,7 @@ class Sysinfo:
         return
 
 
-class Config:
+class Config(object):
     """
     Brief:
         Singleton Class.
@@ -597,7 +648,7 @@ class Config:
             Config.__instance = self
 
 
-class File:
+class File(object):
     """
     Brief:
 
@@ -658,7 +709,7 @@ class File:
         return False
 
 
-class Wifi:
+class Wifi(object):
     """
     Brief: This class managed wi-fi connection
 
@@ -778,7 +829,7 @@ class Wifi:
         return ssid, psw
 
 
-class LoadingBar:
+class LoadingBar(object):
     """
     Brief: This class create a load bar in command prompt
 
@@ -798,7 +849,7 @@ class LoadingBar:
             time.sleep(1)
 
 
-class AtCommand:
+class AtCommand(object):
     """
     Brief: This class managed use cmd AT for talk with the modem
 
@@ -953,24 +1004,25 @@ class AtCommand:
         return
 
     def query(self):
-        self.opentty()
-        self.load()
-        self.getImei()
-        self.getrssi()
-        self.getstatus()
-        self.gettype()
-        self.getroaming()
-        self.getnetwork()
-        self.savejson()
+        if self.opentty():
+            self.load()
+            self.getImei()
+            self.getrssi()
+            self.getstatus()
+            self.gettype()
+            self.getroaming()
+            self.getnetwork()
+            self.savejson()
         return
 
     def opentty(self):
         try:
             self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=1,
                             rtscts=True, dsrdtr=True)
+            return True
         except Exception as e:
             logger.error(e)
-            return
+            return False
 
     def sendcomd(self, cmd):
         self.ser.write(cmd)
@@ -1008,52 +1060,267 @@ class AtCommand:
         return
 
 
+class Persistence(metaclass=abc.ABCMeta):
+
+    def __init__(self):
+        self.data = None
+        return
+
+    def factory(type):
+        if type == "Json":
+            return PersistenceJson()
+        assert 0, "Bad shape creation: " + type
+    factory = staticmethod(factory)
+
+    @abc.abstractmethod
+    def load(self, path):
+        pass
+
+    @abc.abstractmethod
+    def save(self, path):
+        pass
+
+
+class PersistenceJson(Persistence):
+    """
+    Brief:
+
+    Usage:
+
+    """
+    def load(self, path):
+        try:
+            with open(path) as f:
+                self.data = json.load(f)
+                f.close()
+                return self.data
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            print("Could not convert data to an integer.")
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+        return
+
+    def save(self, path):
+        try:
+            fjson = open(path)
+            fjson.write(json.dumps(self.data, indent=4, sort_keys=True))
+            fjson.close()
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        except ValueError:
+            print("Could not convert data to an integer.")
+        except:
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+        return
+
+
+class Director(object):
+    """ Controls the construction process.
+    Director has a builder associated with him. Director then
+    delegates building of the smaller parts to the builder and
+    assembles them together.
+    """
+
+    __builder = None
+
+    def setBuilder(self, builder):
+        self.__builder = builder
+
+    # The algorithm for assembling a car
+    def getProduct(self):
+        rtu = RTU()
+
+        # First goes the body
+        modem = self.__builder.getModem()
+        rtu.setModem(modem)
+
+        # Then engine
+        com = self.__builder.getGPRS()
+        rtu.setGPRS(com)
+
+        wifi = self.__builder.getWifi()
+        rtu.setWifi(wifi)
+
+        sysinfo = self.__builder.getSysInfo()
+        rtu.setSysInfo(sysinfo)
+
+        at = self.__builder.getAt()
+        rtu.setAt(at)
+
+        conf = self.__builder.getConf()
+        rtu.setConf(conf)
+
+        wd = self.__builder.getWd()
+        rtu.setWd(wd)
+
+        monitor = self.__builder.getConfigMonitor()
+        rtu.setConfigMonitor(monitor)
+
+        return rtu
+
+
+# The whole product
+class RTU(object):
+    """ The final product.
+    """
+
+    def __init__(self):
+        self.wifi = None
+        self.gprs = None
+        self.modem = None
+        self.sysinfo = None
+        self.at = None
+        self.conf = None
+        self.wd = None
+        self.configmonitor = None
+
+    def setModem(self, modem):
+        self.modem = modem
+
+    def setWifi(self, wifi):
+        self.wifi = wifi
+
+    def setGPRS(self, gprs):
+        self.gprs = gprs
+
+    def setSysInfo(self, sysinfo):
+        self.sysinfo = sysinfo
+
+    def setAt(self, at):
+        self.at = at
+
+    def setConf(self, conf):
+        self.conf = conf
+
+    def setWd(self, wd):
+        self.wd = wd
+
+    def setConfigMonitor(self, monitor):
+        self.configmonitor = monitor
+
+    def specification(self):
+        logger.info("Modem: %s" % self.modem.pwr)
+        logger.info("gprs: %s" % self.gprs.data)
+        logger.info("Wifi: %s" % self.wifi.ssid)
+
+
+class Builder(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def getWifi(self):
+        pass
+
+    @abc.abstractmethod
+    def getGPRS(self):
+        pass
+
+    @abc.abstractmethod
+    def getModem(self):
+        pass
+
+    @abc.abstractmethod
+    def getSysInfo(self):
+        pass
+
+    @abc.abstractmethod
+    def getAt(self):
+        pass
+
+    @abc.abstractmethod
+    def getConf(self):
+        pass
+
+    @abc.abstractmethod
+    def getWd(self):
+        pass
+
+    @abc.abstractmethod
+    def getConfigMonitor(self):
+        pass
+
+
+class ConcreteBuilder(Builder):
+    """ Concrete Builder implementation.
+    """
+    def getWifi(self):
+        wifi = Wifi()
+        return wifi
+
+    def getGPRS(self):
+        com = GPRS.factory('sasky')
+        return com
+
+    def getModem(self):
+        modem = Modem()
+        return modem
+
+    def getSysInfo(self):
+        sysinfo = Sysinfo()
+        return sysinfo
+
+    def getAt(self):
+        at = AtCommand()
+        return at
+
+    def getConf(self):
+        conf = Config.getInstance()
+        return conf
+
+    def getWd(self):
+        wd = Wacthdogapp()
+        return wd
+
+    def getConfigMonitor(self):
+        monitor = File(str(path['config']))
+        return monitor
+
+
 if __name__ == "__main__":
 
-    # Change process name
-    ProcName.set(b'servicecom.py')
+    if sys.platform == 'win32':
+        logger.error("Platform error... No support win32")
+        com = GPRS.factory('sasky')
+        print(type(com))
+        sys.exit(0)
 
-    # create file handler which logs even debug messages
-    fh = logging.FileHandler(path['log'])
-    ch = logging.StreamHandler()
-    fh.setLevel(logging.INFO)
-    ch.setLevel(logging.INFO)
-    # create formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s - %(funcName)s:%(lineno)d - %(levelname)s - %(message)s')
-    fh.setFormatter(formatter)
-    ch.setFormatter(formatter)
-    # add the handlers to the logger
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-
-    try:
-        with open(path['config']) as f:
-            data = json.load(f)
-    except IOError:
-        logger.error("Can't open config.json")
-        sys.exit(2)
-
-    # load config data
-    s = Config(data)
-
-    daemon = MyDaemon(path['pid'])
-    if len(sys.argv) == 2:
-        if 'start' == sys.argv[1]:
-            # wait 10 seconds before start daemon
-            LoadingBar.start(10)
-            logger.info(json.dumps(s.data))
-            # daemon.start()
-            daemon.run()
-        elif 'stop' == sys.argv[1]:
-            daemon.stop()
-        elif 'restart' == sys.argv[1]:
-            daemon.restart()
-        else:
-            print("Unknown command")
-            print("usage: %s start|stop|restart" % sys.argv[0])
+    elif sys.platform == 'linux2' or sys.platform == 'linux':
+        # Change process name
+        ProcName.set(b'servicecom.py')
+        loggerhandler(path['log'])
+        try:
+            with open(path['config']) as f:
+                data = json.load(f)
+        except IOError:
+            logger.error("Can't open config.json")
             sys.exit(2)
+
+        # load config data
+        s = Config(data)
+
+        daemon = MyDaemon(path['pid'])
+        if len(sys.argv) == 2:
+            if 'start' == sys.argv[1]:
+                # wait 10 seconds before start daemon
+                LoadingBar.start(10)
+                logger.info(json.dumps(s.data))
+                daemon.start()
+            elif 'stop' == sys.argv[1]:
+                daemon.stop()
+            elif 'restart' == sys.argv[1]:
+                daemon.restart()
+            elif 'debug' == sys.argv[1]:
+                daemon.run()
+            else:
+                print("Unknown command")
+                print("usage: %s start|stop|restart" % sys.argv[0])
+                sys.exit(2)
+            sys.exit(0)
+        else:
+            print("usage: %s start|stop|restart" % sys.argv[0])
         sys.exit(0)
     else:
-        print("usage: %s start|stop|restart" % sys.argv[0])
-
-
+        raise Exception("Sorry: no implementation for your platform ('%s') available" % sys.platform)
+        sys.exit(0)

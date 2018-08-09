@@ -12,13 +12,13 @@
 
 
 import os
+import sys
 import tarfile
 from shutil import copyfile
 
 simple_install = True
 
 dirs_to_make = ['/home/pi/servicecom',
-                '/home/pi/servicecom/src',
                 '/usr/bin/modem3g'
                 ]
 things_to_download = ['http://raspberry-at-home.com/files/sakis3g.tar.gz']
@@ -34,11 +34,24 @@ packages_to_install = ['python3',
                        'ppp',
                        'python3-serial'
                        ]
+# If is offline
 cp_files = ['/home/pi/servicecom.py',
-            '/home/pi/config.json'
+            '/home/pi/config.json',
+            '/home/pi/Demo.py',
+            '/home/pi/loadcellcmd.json',
+            '/home/pi/loadcell.json',
+            '/home/pi/networks.json',
+            '/home/pi/scanwifi.py',
+            '/home/pi/simstatus.json'
             ]
 cp_dest = ['/home/pi/servicecom/servicecom.py',
-           '/home/pi/servicecom/config.json'
+           '/home/pi/servicecom/config.json',
+           '/home/pi/servicecom/Demo.py',
+           '/home/pi/servicecom/loadcellcmd.json',
+           '/home/pi/servicecom/loadcell.json',
+           '/home/pi/servicecom/networks.json',
+           '/home/pi/servicecom/scanwifi.py',
+           '/home/pi/servicecom/simstatus.json'
            ]
 
 easy_install_list = []
@@ -108,21 +121,23 @@ def linecount_1(file):
 
 
 def install_daemon():
-    # sudo nano / etc / rc.local
-    # sudo python / home / pi / sample.py &
-    len = linecount_1("/etc/rc.local")
-    f = open("/etc/rc.local", "r")
-    contents = f.readlines()
-    f.close()
+    try:
+        with open('/etc/rc.local', 'rt') as file1:
+            read_data = file1.read()
+            lines = read_data.split('\n')
+            for line in lines:
+                if 'sudo python3 /home/pi/servicecom/servicecom.py start' in line:
+                    return False
+            file1.close()
 
-    len -= 1
-    contents.insert(len,"sudo python3 /home/pi/servicecom/servicecom.py start\n")
-
-    f = open("/etc/rc.local", "w")
-    contents = "".join(contents)
-    f.write(contents)
-    f.close()
-    return
+        with open('/etc/rc.local', 'a') as file:
+            file.write('sudo python3 /home/pi/servicecom/servicecom.py start')
+            file.write('')
+            file.close()
+            return True
+    except IOError:
+        raise Exception("Can't open or write file ")
+        sys.exit(2);
 
 
 def cptodir():
@@ -156,6 +171,8 @@ def deploy_software(update=True):
     tar()
     cptodir()
     os.chmod("/usr/bin/modem3g/sakis3g", 111)
+    os.chmod('/home/pi/servicecom', 777)
+    os.chmod('/home/pi/servicecom/*', 777)
     install_daemon()
     os.system('sudo reboot now')
 
