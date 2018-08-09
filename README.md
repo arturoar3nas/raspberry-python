@@ -80,7 +80,8 @@ The next Files:
 - loadcellcmd.json
 - loadcell.json
 - networks.json
-- scanwifi.py  
+- scanwifi.py
+- simstatus.json
 
 Then you will need do:
 
