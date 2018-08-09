@@ -40,8 +40,7 @@
 ```sh
 /home/pi $ 
 ├─── servicecom
-│   ├─── src
-│   └───...
+│    └─── config.json  Demo.py  loadcellcmd.json  loadcell.json  networks.json  README.md  scanwifi.py  servicecom.py  setup.py                   simstatus.json  
 ```
 
 ### Installation
@@ -52,29 +51,42 @@ You will need the follows tools:
 - [Putty](https://putty.org/)
 
 #### Fast installer
+#### Online
 
 ```sh
 sudo apt-get install git
 ```
+Then
+```sh
+sudo git clone https://github.com/arturoar3nas/raspberry-python && mv /home/pi/raspberry-python /home/pi/servicecom
+```
+Finally 
+```sh
+$ sudo python3 servicecom/setup.py 
+```
 
+#### Offline
 Copy in the below directory: 
 
 ```sh
 $ /home/pi/
 ```
-
 The next Files:
 
 - setup.py
 - servicecom.py
 - config.json
+- Demo.py
+- loadcellcmd.json
+- loadcell.json
+- networks.json
+- scanwifi.py  
 
 Then you will need do:
 
 ```sh
 $ sudo python3 setup.py 
 ```
-
 Make sure to use the command with sudo. Wait to the installer
 and later go to the [Usage](#Usage) step. 
 
