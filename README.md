@@ -54,6 +54,7 @@ You will need the follows tools:
 #### Online
 
 ```sh
+sudo apt-get update
 sudo apt-get install git
 ```
 Then
@@ -64,6 +65,7 @@ Finally
 ```sh
 $ sudo python3 servicecom/setup.py 
 ```
+If all it's fine, go to usage and enjoy!
 
 #### Offline
 Copy in the below directory: 
@@ -131,7 +133,7 @@ python3 servicecom.py stop
 
 For view the process use:
 ```sh
-sudo ps -A | grep "python3"
+sudo ps -A | grep servicecom.py
 ```
 
 and you will see python3 process running
