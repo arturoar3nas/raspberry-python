@@ -10,10 +10,13 @@
   The Documentation of each class it's inside of them
 """
 from __future__ import generators
+
+import stat
 from time import sleep
 import abc
 import os
 import sys
+
 if sys.platform == 'linux2' or sys.platform == 'linux':
     import gpiozero
 import psutil
@@ -243,14 +246,14 @@ class MyDaemon(Daemon):
                 sys.exit(2)
 
     def GprsTask(self):
-        if self.rtu.conf.data["Flags"]["3G"] == 1:
+        # get the network info
+        logger.info("Query at commands")
+        self.rtu.at.query()
+
+        if self.rtu.conf.data["Flags"]["3G"] == 1 and self.rtu.at.getStatus() is True:
             logger.info("check the 3g connection")
             # Then we check the 3g connection
             status_3g = self.rtu.gprs.testconnection()
-
-            # get the network info
-            logger.info("Query at commands")
-            self.rtu.at.query()
 
             # Fail communication
             if not status_3g:
@@ -295,7 +298,7 @@ class MyDaemon(Daemon):
             if not status_wifi:
                 # if not connect then disconnect and connect the interface
                 self.rtu.wifi.disconnect()
-                sleep(2)
+                time.sleep(3)
                 self.rtu.wifi.reconnect()
 
     def PersistenceTask(self):
@@ -383,6 +386,7 @@ class GPRS(metaclass=abc.ABCMeta):
         if type == 'sasky':
             return Sasky3G()
         assert 0, "Bad shape creation: " + type
+
     factory = staticmethod(factory)
 
     @abc.abstractmethod
@@ -425,6 +429,7 @@ class Sasky3G(GPRS):
         both return a bool if the connection it's ok
     This class use ttyUSB3
     """
+
     def start(self):
         try:
             logger.info("Starting 3g com")
@@ -475,7 +480,8 @@ class Sasky3G(GPRS):
         mystr = b'connected'
         proc = b''
         try:
-            proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"], shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            proc = subprocess.check_output(["sudo /usr/bin/modem3g/sakis3g --console status"],
+                                           shell=True)  # stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         except subprocess.CalledProcessError as e:
             logger.error(e.output)
 
@@ -532,17 +538,19 @@ class Wacthdogapp(object):
         return
 
     def savejson(self):
-        try:
-            fjson = open(path['config'], "w+")
-            fjson.write(json.dumps(self.conf.data, indent=4, sort_keys=True))
-            fjson.close()
-        except IOError as e:
-            logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
-        except ValueError:
-            logger.error("Could not convert data to an integer.")
-        except:
-            logger.error("Unexpected error:", sys.exc_info()[0])
-            raise
+        # try:
+        #     fjson = open(path['config'], "w+")
+        #     data = json.load(fjson)
+        #     data['StatusApp'] = self.conf.data['StatusApp']
+        #     fjson.write(json.dumps(data, indent=4, sort_keys=True))
+        #     fjson.close()
+        # except IOError as e:
+        #     logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
+        # except ValueError:
+        #     logger.error("Could not convert data to an integer.")
+        # except:
+        #     logger.error("Unexpected error:", sys.exc_info()[0])
+        #     raise
         return
 
 
@@ -683,7 +691,6 @@ class File(object):
                     return True
         except IOError:
             logger.error("Can't open file %s" % file)
-            sys.exit(2);
 
         return False
 
@@ -696,10 +703,10 @@ class File(object):
                 if oldstr1 in read_data:
                     file_new = read_data.replace(oldstr1, str)
                     file1.close()
-                    file1 = open(file,'w')
+                    file1 = open(file, 'w')
                     file1.write(file_new)
                     file1.close()
-                    logger.info("file new: %s" %file_new)
+                    logger.info("file new: %s" % file_new)
                     logger.info("file old: %s" % read_data)
                     return True
 
@@ -765,7 +772,6 @@ class Wifi(object):
                     "echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' \
                     | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf")
 
-
             logger.info("Reconfigure supplicant wlan0")
             os.system("wpa_cli -i wlan0 reconfigure")
             logger.info("done! wlan0")
@@ -787,7 +793,7 @@ class Wifi(object):
     @staticmethod
     def reconnect():
         os.system("sudo ifconfig wlan0 up")
-        logger.info("reconect ifconfig wlan0 down")
+        logger.info("reconect ifconfig wlan0 up")
         return
 
     @staticmethod
@@ -836,6 +842,7 @@ class LoadingBar(object):
     Usage:
         just invoke start method and pass a integer with the seconds to wait
     """
+
     def __init__(self):
         return
 
@@ -916,8 +923,12 @@ class AtCommand(object):
         self.type_dict['31'] = '3G/LTE'
 
         self.ser = None
-        self.data = None
+        self.data = dict()
+        self.status = False
         return
+
+    def getStatus(self):
+        return self.status
 
     def getrssi(self):
         lines = self.sendcomd(b'AT+CSQ\r')[1]
@@ -1013,16 +1024,43 @@ class AtCommand(object):
             self.getroaming()
             self.getnetwork()
             self.savejson()
+        else:
+            # can't read the modem
+            self.data['Signal'] = 'Sin datos'
+            self.data['IMEI'] = 'Sin datos'
+            self.data['Status'] = 'Sin datos'
+            self.data['Type'] = 'Sin datos'
+            self.data['Roaming'] = 'Sin datos'
+            self.data['Red'] = 'Sin datos'
+            self.savejson()
         return
 
-    def opentty(self):
+    @staticmethod
+    def disk_exists(path):
         try:
-            self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1, timeout=1,
-                            rtscts=True, dsrdtr=True)
-            return True
-        except Exception as e:
-            logger.error(e)
+            return stat.S_ISBLK(os.stat(path).st_mode)
+        except:
             return False
+
+    def opentty(self):
+        ret = False
+        try:
+            if self.disk_exists('/dev/ttyUSB2'):
+                self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1,
+                                         timeout=1,
+                                         rtscts=True, dsrdtr=True)
+                ret = True
+            else:
+                logger.info('No exist /dev/ttyUSB2')
+                ret = False
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.error(e)
+            ret = False
+        except:
+            logger.error('Unexpected Exception Trying to open port ttyUSB2')
+            ret = False
+        self.status = ret
+        return ret
 
     def sendcomd(self, cmd):
         self.ser.write(cmd)
@@ -1070,6 +1108,7 @@ class Persistence(metaclass=abc.ABCMeta):
         if type == "Json":
             return PersistenceJson()
         assert 0, "Bad shape creation: " + type
+
     factory = staticmethod(factory)
 
     @abc.abstractmethod
@@ -1088,6 +1127,7 @@ class PersistenceJson(Persistence):
     Usage:
 
     """
+
     def load(self, path):
         try:
             with open(path) as f:
@@ -1245,6 +1285,7 @@ class Builder(metaclass=abc.ABCMeta):
 class ConcreteBuilder(Builder):
     """ Concrete Builder implementation.
     """
+
     def getWifi(self):
         wifi = Wifi()
         return wifi

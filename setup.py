@@ -63,7 +63,7 @@ def prepare_dirs():
         try:
             os.mkdir(dir)
         except OSError:
-                print('Directory not created.')
+                print('[Setup.py][ERROR][prepare_dirs] Directory not created.')
 
 
 def download_things():
@@ -80,14 +80,14 @@ def prepare_apt_repos():
 def install_packages(update=True):
     if update:
         os.system('apt-get update')
-        print("Installing software...")
+        print("[Setup.py][INFO] Installing software...")
         os.system('apt-get install -y {0}'.format(' '.join(packages_to_install)))
 
 
 def install_python_packages():
     # Now install packages
     for package in easy_install_list:
-        print("Installing %s" % package)
+        print("[Setup.py][INFO] Installing %s" % package)
         os.system('pip install {0}'.format(package))
 
 
@@ -106,18 +106,16 @@ def give_permission():
 
 
 def tar():
-    os.chdir('/usr/bin/modem3g/')
+    if not os.path.exists('/usr/bin/modem3g'):
+        os.chdir('/usr/bin/modem3g/')
+
     for files in untar_files:
         try:
             tar = tarfile.open(files)
             tar.extractall()
             tar.close()
         except:
-            print("There was an error opening tarfile. The file might be corrupt or missing.")
-
-
-def linecount_1(file):
-    return len(open(file).readlines(  ))
+            print("[Setup.py][ERROR][tar] There was an error opening tarfile. The file might be corrupt or missing.")
 
 
 def install_daemon():
@@ -127,39 +125,48 @@ def install_daemon():
             lines = read_data.split('\n')
             for line in lines:
                 if 'sudo python3 /home/pi/servicecom/servicecom.py start' in line:
+                    print("[Setup.py][INFO][install_daemon] The daemon it's already installed")
                     return False
             file1.close()
+        data = ""
+        with open('/etc/rc.local', 'w') as file:
+            for line in lines:
+                if not 'exit 0' in line:
+                    data += line + '\n'
 
-        with open('/etc/rc.local', 'a') as file:
-            file.write('sudo python3 /home/pi/servicecom/servicecom.py start')
-            file.write('')
+            data += 'sudo python3 /home/pi/servicecom/servicecom.py start\n'
+            data += 'exit 0\n'
+            data += ''
+            file.write(data)
             file.close()
             return True
     except IOError:
-        raise Exception("Can't open or write file ")
-        sys.exit(2);
+        raise Exception("[Setup.py][ERROR][install_daemon] Can't open or write file ")
+        sys.exit(2)
 
 
 def cptodir():
     i = 0
     while i < cp_files.__len__():
         try:
-            copyfile(cp_files[i], cp_dest[i])
+            if os.path.exists(cp_files[i]):
+                copyfile(cp_files[i], cp_dest[i])
         except OSError:
-            print('Error copying file')
+            print('[Setup.py][ERROR][cptodir] Error copying file')
         i += 1
 
     for rmsrc in cp_files:
         try:
-            os.remove(rmsrc)
+            if os.path.exists(rmsrc):
+                os.remove(rmsrc)
         except OSError:
-            print('Error removing file')
+            print('[Setup.py][ERROR][cptodir] Error removing file')
 
 
 def make_sure_sudo():
     ret = os.getuid()
     if ret != 0:
-        print('You need root permissions to do this!')
+        print('[Setup.py][INFO][make_sure_sudo] You need root permissions to do this!')
         exit(1)
 
 
@@ -171,9 +178,10 @@ def deploy_software(update=True):
     tar()
     cptodir()
     os.chmod("/usr/bin/modem3g/sakis3g", 111)
-    os.chmod('/home/pi/servicecom', 777)
-    os.chmod('/home/pi/servicecom/*', 777)
+    os.system("sudo chmod 777 /home/pi/servicecom")
+    os.system("sudo chmod 777 /home/pi/servicecom/*")
     install_daemon()
+    print('[Setup.py][INFO][deploy_software] Raspberry reboot now')
     os.system('sudo reboot now')
 
 

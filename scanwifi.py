@@ -3,7 +3,8 @@
 import subprocess
 import json
 import re
-
+import os
+    
 """
 # @file   scanwifi.py
 # @author Arturo Arenas (arturoar3nas@gmail.com)
@@ -20,8 +21,8 @@ path['net'] = '/home/pi/servicecom/networks.json'
 
 def getWiFiList():
     """Get a list of WiFi networks"""
-
-    proc = subprocess.Popen('iwlist scan 2>/dev/null', shell=True, stdout=subprocess.PIPE, )
+    os.system("sudo ifconfig wlan0 up")
+    proc = subprocess.Popen('sudo iwlist scan 2>/dev/null', shell=True, stdout=subprocess.PIPE, )
     stdout_str = proc.communicate()[0]
     stdout_list = stdout_str.decode().split('\n')
     networks = []
