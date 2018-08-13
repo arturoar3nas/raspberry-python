@@ -63,7 +63,7 @@ sudo git clone https://github.com/arturoar3nas/raspberry-python && mv /home/pi/r
 ```
 Finally 
 ```sh
-$ sudo python3 servicecom/setup.py 
+sudo python3 servicecom/setup.py 
 ```
 If all it's fine, go to usage and enjoy!
 
@@ -71,7 +71,7 @@ If all it's fine, go to usage and enjoy!
 Copy in the below directory: 
 
 ```sh
-$ /home/pi/
+/home/pi/
 ```
 The next Files:
 
@@ -88,7 +88,7 @@ The next Files:
 Then you will need do:
 
 ```sh
-$ sudo python3 setup.py 
+sudo python3 setup.py 
 ```
 Make sure to use the command with sudo. Wait to the installer
 and later go to the [Usage](#Usage) step. 
@@ -99,9 +99,9 @@ and later go to the [Usage](#Usage) step.
 
 Servicecom requires [Python](https://www.python.org/) v3+ to run.
 ```sh
-$ sudo apt-get install python3
-$ sudo apt install python3-gpiozero
-$ sudo apt install python3-psutil
+sudo apt-get install python3
+sudo apt install python3-gpiozero
+sudo apt install python3-psutil
 ```
 #### Sakis3G
 
@@ -109,16 +109,16 @@ Servicecom requires [Sakis3G](http://raspberry-at-home.com/files/sakis3g.tar.gz)
 
 Install the dependencies and Dependencies and start the modem.
 ```sh
-$ sudo apt-get update
-$ sudo apt-get install ppp
-$ wget "http://raspberry-at-home.com/files/sakis3g.tar.gz"
-$ sudo mkdir /usr/bin/modem3g
-$ sudo chmod 777 /usr/bin/modem3g
-$ sudo cp sakis3g.tar.gz /usr/bin/modem3g
-$ cd /usr/bin/modem3g
-$ sudo tar -zxvf sakis3g.tar.gz
-$ sudo chmod +x sakis3g
-$ sudo ./sakis3g connect
+sudo apt-get update
+sudo apt-get install ppp
+wget "http://raspberry-at-home.com/files/sakis3g.tar.gz"
+sudo mkdir /usr/bin/modem3g
+sudo chmod 777 /usr/bin/modem3g
+sudo cp sakis3g.tar.gz /usr/bin/modem3g
+cd /usr/bin/modem3g
+sudo tar -zxvf sakis3g.tar.gz
+sudo chmod +x sakis3g
+sudo ./sakis3g connect
 ```
 
 ### Usage

@@ -4,7 +4,7 @@ import subprocess
 import json
 import re
 import os
-    
+
 """
 # @file   scanwifi.py
 # @author Arturo Arenas (arturoar3nas@gmail.com)

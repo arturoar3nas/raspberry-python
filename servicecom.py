@@ -250,7 +250,7 @@ class MyDaemon(Daemon):
         logger.info("Query at commands")
         self.rtu.at.query()
 
-        if self.rtu.conf.data["Flags"]["3G"] == 1 and self.rtu.at.getStatus() is True:
+        if self.rtu.conf.data["Flags"]["3g"] == "1":
             logger.info("check the 3g connection")
             # Then we check the 3g connection
             status_3g = self.rtu.gprs.testconnection()
@@ -271,7 +271,7 @@ class MyDaemon(Daemon):
                     self.rtu.gprs.err = 0
 
     def ScanTask(self):
-        if self.rtu.conf.data["StopScan"] == 0:
+        if self.rtu.conf.data["StopScan"] == "0":
             logger.info("check if the app still running")
             # the next stuff by do is check if the app still running
             app, self.rtu.conf.data = self.rtu.wd.getstatusapp()
@@ -289,10 +289,13 @@ class MyDaemon(Daemon):
 
     def WifiTask(self):
         # if wi-fi flag it's enabled
-        if self.rtu.conf.data["Flags"]["Wifi"] == 1:
+        if self.rtu.conf.data["Flags"]["Wifi"] == "1":
             # check the setting
             ssid, psw = self.rtu.wifi.verify()
             logger.info("ssid = %r  psw = %r" % (ssid, psw))
+            if ssid is True or psw is True:
+                self.rtu.wifi.network_props(self.rtu.conf)
+
             # check connection wi-fi
             status_wifi = self.rtu.wifi.test_connection()
             if not status_wifi:
@@ -312,7 +315,7 @@ class MyDaemon(Daemon):
             if self.rtu.conf.data["Flags"]["Wifi"] == "0":
                 self.rtu.wifi.disconnect()
 
-            if self.rtu.conf.data["Flags"]["3G"] == "0":
+            if self.rtu.conf.data["Flags"]["3g"] == "0":
                 self.rtu.gprs.stop()
                 sleep(1)
                 self.rtu.modem.stop()
@@ -434,7 +437,7 @@ class Sasky3G(GPRS):
         try:
             logger.info("Starting 3g com")
             myconf = Config.getInstance()
-            apn = myconf.data["3G"]["APN"]
+            apn = myconf.data["3G"]["Apn"]
             psw = myconf.data["3G"]["Psw"]
             usr = myconf.data["3G"]["User"]
 
@@ -589,9 +592,9 @@ class Sysinfo(object):
         data["FreeMemory"] = self.mem.free
         data["InactiveMemory"] = self.mem.inactive
         data["TotalMemory"] = self.mem.total
-        data['diskfree'] = self.disk.free
-        data['diskused'] = self.disk.used
-        data['disktotal'] = self.disk.total
+        data['Diskfree'] = self.disk.free
+        data['Diskused'] = self.disk.used
+        data['Disktotal'] = self.disk.total
         data['CpuPercent'] = self.cpu
         self.str = json.dumps(data)
         self.writejson()
@@ -700,15 +703,22 @@ class File(object):
         try:
             with open(file, 'r+') as file1:
                 read_data = file1.read()
-                if oldstr1 in read_data:
-                    file_new = read_data.replace(oldstr1, str)
-                    file1.close()
-                    file1 = open(file, 'w')
-                    file1.write(file_new)
-                    file1.close()
-                    logger.info("file new: %s" % file_new)
-                    logger.info("file old: %s" % read_data)
-                    return True
+                print(read_data)
+                if not oldstr1:
+                    return False
+                file1.close()
+                lines = read_data.split('\n')
+                print("str %s" % str)
+                print("old str %s" % oldstr1)
+                for line in lines:
+                    print("line %s" % line)
+                    if line in oldstr1:
+                        data = read_data.replace(oldstr1, str)
+                        f = open(file, 'w+')
+                        print("f: %s" % data)
+                        f.write(data)
+                        f.close()
+                        return True
 
         except IOError:
             logger.error("Can't open file %s" % file)
@@ -759,14 +769,14 @@ class Wifi(object):
     def network_props(self, conf):
         try:
             self.password = conf.data["Wifi"]["Psw"]
-            self.ssid = conf.data["Wifi"]["SSID"]
+            self.ssid = conf.data["Wifi"]["Ssid"]
 
             # if exist the temporary file
             self.getsetup()
             file = File(path['wpa'])
             retpsw = file.rplcinfile(path['wpa'], self.oldpassword, self.password)
             retssid = file.rplcinfile(path['wpa'], self.oldssid, self.ssid)
-            if retpsw or retssid is False:
+            if retpsw and retssid is False:
                 #  then we set the config
                 os.system(
                     "echo '\nnetwork={\n    ssid=\"" + self.ssid + "\"\n    psk=\"" + self.password + "\"\n}' \
@@ -826,7 +836,7 @@ class Wifi(object):
             conf = Config.getInstance()
 
             # check if the wpa_supplicant network object exist
-            ssid = File.parsefilecmp(wpa_supplicant, "    ssid=\"" + conf.data["Wifi"]["SSID"] + "\"")
+            ssid = File.parsefilecmp(wpa_supplicant, "    ssid=\"" + conf.data["Wifi"]["Ssid"] + "\"")
             psw = File.parsefilecmp(wpa_supplicant, "    psk=\"" + conf.data["Wifi"]["Psw"] + "\"")
 
         except Exception as e:
@@ -948,7 +958,7 @@ class AtCommand(object):
         for i, line in enumerate(lines):
             if i == 1:
                 try:
-                    self.data['IMEI'] = line.replace('\r', '')
+                    self.data['Imei'] = line.replace('\r', '')
                 except ValueError:
                     logger.error("Could not convert data to an integer.")
                 except:
@@ -1038,21 +1048,20 @@ class AtCommand(object):
     @staticmethod
     def disk_exists(path):
         try:
-            return stat.S_ISBLK(os.stat(path).st_mode)
+            pc1 = subprocess.Popen('find '+ path, stdout=subprocess.PIPE, shell=True)
+            if pc1 == path:
+                logger.info(pc1)
+                return True
         except:
             return False
 
     def opentty(self):
         ret = False
         try:
-            if self.disk_exists('/dev/ttyUSB2'):
-                self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1,
-                                         timeout=1,
-                                         rtscts=True, dsrdtr=True)
-                ret = True
-            else:
-                logger.info('No exist /dev/ttyUSB2')
-                ret = False
+            self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1,
+                                     timeout=1,
+                                     rtscts=True, dsrdtr=True)
+            ret = True
         except (ValueError, TypeError, AttributeError) as e:
             logger.error(e)
             ret = False
@@ -1354,6 +1363,12 @@ if __name__ == "__main__":
                 daemon.restart()
             elif 'debug' == sys.argv[1]:
                 daemon.run()
+            elif 'try' == sys.argv[1]:
+                wifi = Wifi()
+                ssid, psw = wifi.verify()
+                logger.info("ssid = %r  psw = %r" % (ssid, psw))
+                if ssid is False or psw is False:
+                    wifi.network_props(s)
             else:
                 print("Unknown command")
                 print("usage: %s start|stop|restart" % sys.argv[0])

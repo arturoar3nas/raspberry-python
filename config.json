@@ -1,25 +1,25 @@
 {
   "Flags": {
-    "Wifi": 1,
-    "3G": 1,
-    "Bluethoot": 1
+    "Wifi": "1",
+    "3g": "1",
+    "Bluethoot": "1"
   },
   "3G": {
-    "APN": "imovil.entelpcs.cl",
+    "Apn": "imovil.entelpcs.cl",
     "User": "entelcps",
     "Psw": "entelcps"
   },
   "Wifi": {
-    "SSID": "innovared-piso1",
+    "Ssid": "innovared-piso1",
     "Psw": "222275622"
   },
   "Aplication": "/home/pi/servicecom/Demo.py",
   "ScanTime": 10,
   "StopScan": 0,
   "StatusApp": "Proceso Ok",
-  "ID": 1,
-  "KEY": "abcdf",
-  "weight": 0,
-  "version": "1.0.0.1",
-  "server":"http://www.wolke.com"
+  "Id": 1,
+  "Key": "abcdf",
+  "Weight": 0,
+  "Version": "1.0.0.1",
+  "Server":"http://www.wolke.com"
 }
