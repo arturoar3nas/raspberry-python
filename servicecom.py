@@ -246,11 +246,12 @@ class MyDaemon(Daemon):
                 sys.exit(2)
 
     def GprsTask(self):
-        # get the network info
-        logger.info("Query at commands")
-        self.rtu.at.query()
 
+        # get the network info
         if self.rtu.conf.data["Flags"]["3g"] == "1":
+            logger.info("Query at commands")
+            self.rtu.at.query()
+
             logger.info("check the 3g connection")
             # Then we check the 3g connection
             status_3g = self.rtu.gprs.testconnection()
@@ -260,15 +261,18 @@ class MyDaemon(Daemon):
                 self.rtu.gprs.err += 1
                 logger.info("Try connections %d" % self.rtu.gprs.err)
                 if self.rtu.gprs.err > 5:
-                    logger.info("Fail communication")
-                    self.rtu.gprs.stop()
-                    sleep(1)
-                    self.rtu.modem.stop()
-                    sleep(5)  # wait a 5 seconds and...
-                    self.rtu.modem.start()
-                    sleep(1)
-                    self.rtu.gprs.start()
-                    self.rtu.gprs.err = 0
+                    try:
+                        logger.info("Fail communication")
+                        # self.rtu.gprs.stop()
+                        # sleep(1)
+                        # self.rtu.modem.stop()
+                        # sleep(5)  # wait a 5 seconds and...
+                        self.rtu.modem.start()
+                        sleep(5)
+                        self.rtu.gprs.start()
+                        self.rtu.gprs.err = 0
+                    except Exception as e:
+                        logger.error("Error trying to start modem %s" % e)
 
     def ScanTask(self):
         if self.rtu.conf.data["StopScan"] == "0":
@@ -293,7 +297,7 @@ class MyDaemon(Daemon):
             # check the setting
             ssid, psw = self.rtu.wifi.verify()
             logger.info("ssid = %r  psw = %r" % (ssid, psw))
-            if ssid is True or psw is True:
+            if ssid is False or psw is False:
                 self.rtu.wifi.network_props(self.rtu.conf)
 
             # check connection wi-fi
@@ -307,15 +311,19 @@ class MyDaemon(Daemon):
     def PersistenceTask(self):
         logger.info("veryfy json")
         if self.rtu.configmonitor.verify():
+            oldWifi = self.rtu.conf.data["Flags"]["Wifi"]
+            oldGprs = self.rtu.conf.data["Flags"]["3g"]
             self.rtu.conf.load()
             self.timeout = self.rtu.conf.data["ScanTime"]
             logger.info("Time Scan %s" % self.timeout)
             logger.info(json.dumps(self.rtu.conf.data))
 
-            if self.rtu.conf.data["Flags"]["Wifi"] == "0":
+            if self.rtu.conf.data["Flags"]["Wifi"] == "0" \
+                    and oldWifi != self.rtu.conf.data["Flags"]["Wifi"]:
                 self.rtu.wifi.disconnect()
 
-            if self.rtu.conf.data["Flags"]["3g"] == "0":
+            if self.rtu.conf.data["Flags"]["3g"] == "0" \
+                and oldGprs != self.rtu.conf.data["Flags"]["3g"]:
                 self.rtu.gprs.stop()
                 sleep(1)
                 self.rtu.modem.stop()
@@ -690,7 +698,7 @@ class File(object):
             with open(file, 'rt') as file1:
                 read_data = file1.read()
                 if str1 in read_data:
-                    logger.info("read_data: %s" % read_data)
+                    logger.debug("read_data: %s" % read_data)
                     return True
         except IOError:
             logger.error("Can't open file %s" % file)
@@ -700,24 +708,25 @@ class File(object):
     def rplcinfile(self, file, oldstr1, str):
         logger.info("file: %s" % file)
         logger.info("strl: %s" % str)
+        if not oldstr1:
+            return False
+        oldstr1 = oldstr1.replace(' ', '')
         try:
             with open(file, 'r+') as file1:
                 read_data = file1.read()
-                print(read_data)
-                if not oldstr1:
-                    return False
+                logger.info("read_data: %s \n" % read_data)
                 file1.close()
                 lines = read_data.split('\n')
-                print("str %s" % str)
-                print("old str %s" % oldstr1)
+                logger.info("str %s" % str)
+                logger.info("old str %s" % oldstr1)
                 for line in lines:
-                    print("line %s" % line)
+                    logger.info("line %s" % line)
                     if line in oldstr1:
                         data = read_data.replace(oldstr1, str)
-                        f = open(file, 'w+')
-                        print("f: %s" % data)
-                        f.write(data)
-                        f.close()
+                        with open(file, "w") as f:
+                            logger.info("data: %s\n" % data)
+                            f.write(data)
+                            f.close()
                         return True
 
         except IOError:
@@ -911,7 +920,7 @@ class AtCommand(object):
         self.rssi_dict['30'] = '-53'
 
         self.status_dict = dict()
-        self.status_dict['0'] = 'No registrado'
+        self.status_dict['0'] = 'Registrado'
         self.status_dict['1'] = 'Registrado'
         self.status_dict['2'] = 'No registrado, buscando operador'
         self.status_dict['3'] = 'Registro negado'
@@ -935,12 +944,16 @@ class AtCommand(object):
         self.ser = None
         self.data = dict()
         self.status = False
+        self.port = '/dev/ttyUSB2'
         return
 
     def getStatus(self):
         return self.status
 
+
+
     def getrssi(self):
+        logger.info("get RSSI")
         lines = self.sendcomd(b'AT+CSQ\r')[1]
         if '+CSQ' in lines:
             try:
@@ -948,12 +961,15 @@ class AtCommand(object):
                 self.data['Signal'] = self.rssi_dict[index]
             except ValueError:
                 logger.error("Could not convert data to an integer.")
+            except IndexError:
+                logger.error("Index error...")
             except:
                 logger.error("Unexpected error:", sys.exc_info()[0])
                 raise
         return
 
     def getImei(self):
+        logger.info("get IMEI")
         lines = self.sendcomd(b'AT+CGSN\r')
         for i, line in enumerate(lines):
             if i == 1:
@@ -967,6 +983,7 @@ class AtCommand(object):
         return
 
     def gettype(self):
+        logger.info("get TYPE")
         line = self.sendcomd(b'AT+WS46?\r')[1]
         try:
             index = line.replace('\r', '').replace(' ', '').split(',')[0]
@@ -980,6 +997,7 @@ class AtCommand(object):
         return
 
     def getstatus(self):
+        logger.info("get STATUS")
         line = self.sendcomd(b'AT+CREG?\r')[1]
         if '+CREG:' in line:
             try:
@@ -993,6 +1011,7 @@ class AtCommand(object):
         return
 
     def getroaming(self):
+        logger.info("get ROAMING")
         line = self.sendcomd(b'AT+CREG?\r')[1]
         if '+CREG:' in line:
             try:
@@ -1009,6 +1028,7 @@ class AtCommand(object):
         return
 
     def getnetwork(self):
+        logger.info("get NETWORK")
         lines = self.sendcomd(b'AT+COPS?\r')
         for line in lines:
             if '+COPS' in line:
@@ -1034,15 +1054,6 @@ class AtCommand(object):
             self.getroaming()
             self.getnetwork()
             self.savejson()
-        else:
-            # can't read the modem
-            self.data['Signal'] = 'Sin datos'
-            self.data['IMEI'] = 'Sin datos'
-            self.data['Status'] = 'Sin datos'
-            self.data['Type'] = 'Sin datos'
-            self.data['Roaming'] = 'Sin datos'
-            self.data['Red'] = 'Sin datos'
-            self.savejson()
         return
 
     @staticmethod
@@ -1058,7 +1069,7 @@ class AtCommand(object):
     def opentty(self):
         ret = False
         try:
-            self.ser = serial.Serial(port='/dev/ttyUSB2', baudrate=9600, bytesize=8, parity='N', stopbits=1,
+            self.ser = serial.Serial(port=self.port, baudrate=9600, bytesize=8, parity='N', stopbits=1,
                                      timeout=1,
                                      rtscts=True, dsrdtr=True)
             ret = True
@@ -1066,9 +1077,9 @@ class AtCommand(object):
             logger.error(e)
             ret = False
         except:
-            logger.error('Unexpected Exception Trying to open port ttyUSB2')
+            logger.error('Unexpected Exception Trying to open port %s' % self.port)
             ret = False
-        self.status = ret
+
         return ret
 
     def sendcomd(self, cmd):
@@ -1079,6 +1090,7 @@ class AtCommand(object):
 
     def savejson(self):
         try:
+            logger.info("Save json")
             fjson = open(path['sim'], "w+")
             fjson.write(json.dumps(self.data, indent=4, sort_keys=True))
             fjson.close()
@@ -1093,9 +1105,10 @@ class AtCommand(object):
 
     def load(self):
         try:
+            logger.info("Load json")
             with open(path['sim']) as f:
                 self.data = json.load(f)
-                logger.info(self.data)
+                # logger.info(self.data)
                 f.close()
         except IOError as e:
             logger.error("I/O error({0}): {1}".format(e.errno, e.strerror))
