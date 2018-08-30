@@ -15,11 +15,11 @@
   },
   "Aplication": "/home/pi/servicecom/Demo.py",
   "ScanTime": 10,
-  "StopScan": 0,
+  "StopScan": "0",
   "StatusApp": "Proceso Ok",
   "Id": 1,
   "Key": "abcdf",
-  "Weight": 0,
+  "Weight": "0",
   "Version": "1.0.0.1",
   "Server":"http://www.wolke.com"
 }

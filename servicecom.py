@@ -458,7 +458,7 @@ class Sasky3G(GPRS):
             USBINTERFACE=3 \
             USBMODEM=05c6:9000 \
             OTHER=USBMODEM \
-            MODEM=OTHER", shell=True)  #
+            MODEM=OTHER", timeout=30, shell=True)  #
             logger.info("Sucess Modem 3g")
         except subprocess.CalledProcessError as e:
             logger.error("Error starting Modem")
@@ -771,7 +771,7 @@ class Wifi(object):
                 return True
         except IOError:
             logger.error("Can't open file ")
-            sys.exit(2);
+            sys.exit(2)
 
         return False
 
@@ -944,7 +944,14 @@ class AtCommand(object):
         self.ser = None
         self.data = dict()
         self.status = False
-        self.port = '/dev/ttyUSB2'
+        self.port = dict()
+        self.port[0] = '/dev/ttyUSB0'
+        self.port[1] = '/dev/ttyUSB1'
+        self.port[2] = '/dev/ttyUSB2'
+        self.port[3] = '/dev/ttyUSB3'
+        self.port[4] = '/dev/ttyUSB4'
+        self.port[5] = '/dev/ttyUSB5'
+        self.port[6] = '/dev/ttyUSB6'
         return
 
     def getStatus(self):
@@ -954,7 +961,12 @@ class AtCommand(object):
 
     def getrssi(self):
         logger.info("get RSSI")
-        lines = self.sendcomd(b'AT+CSQ\r')[1]
+        try:
+            lines = self.sendcomd(b'AT+CSQ\r')[1]
+        except:
+            logger.error("Cant get Rssi data!")
+            return
+
         if '+CSQ' in lines:
             try:
                 index = lines.replace('\r', '').replace('+CSQ:', '').replace(' ', '').split(',')[0]
@@ -965,12 +977,16 @@ class AtCommand(object):
                 logger.error("Index error...")
             except:
                 logger.error("Unexpected error:", sys.exc_info()[0])
-                raise
         return
 
     def getImei(self):
         logger.info("get IMEI")
-        lines = self.sendcomd(b'AT+CGSN\r')
+        try:
+            lines = self.sendcomd(b'AT+CGSN\r')
+        except:
+            logger.error("Cant get IMEI data!")
+            return
+
         for i, line in enumerate(lines):
             if i == 1:
                 try:
@@ -979,12 +995,15 @@ class AtCommand(object):
                     logger.error("Could not convert data to an integer.")
                 except:
                     logger.error("Unexpected error:", sys.exc_info()[0])
-                    raise
         return
 
     def gettype(self):
         logger.info("get TYPE")
-        line = self.sendcomd(b'AT+WS46?\r')[1]
+        try:
+            line = self.sendcomd(b'AT+WS46?\r')[1]
+        except:
+            logger.error("Cant get TYPE data!")
+            return
         try:
             index = line.replace('\r', '').replace(' ', '').split(',')[0]
             self.data['Type'] = self.type_dict[index]
@@ -992,13 +1011,15 @@ class AtCommand(object):
             logger.error("Could not convert data to an integer.")
         except:
             logger.error("Unexpected error:", sys.exc_info()[0])
-            raise
-        return
         return
 
     def getstatus(self):
-        logger.info("get STATUS")
-        line = self.sendcomd(b'AT+CREG?\r')[1]
+        try:
+            logger.info("get STATUS")
+            line = self.sendcomd(b'AT+CREG?\r')[1]
+        except:
+            logger.error("Cant get STATUS data!")
+            return
         if '+CREG:' in line:
             try:
                 str = line.replace('\r', '').replace('+CREG:', '').replace(' ', '').split(',')
@@ -1007,12 +1028,15 @@ class AtCommand(object):
                 logger.error("Could not convert data to an integer.")
             except:
                 logger.error("Unexpected error:", sys.exc_info()[0])
-                raise
         return
 
     def getroaming(self):
         logger.info("get ROAMING")
-        line = self.sendcomd(b'AT+CREG?\r')[1]
+        try:
+            line = self.sendcomd(b'AT+CREG?\r')[1]
+        except:
+            logger.error("Cant get ROAMING data!")
+            return
         if '+CREG:' in line:
             try:
                 str = line.replace('\r', '').replace('+CREG:', '').replace(' ', '').split(',')
@@ -1024,12 +1048,15 @@ class AtCommand(object):
                 logger.error("Could not convert data to an integer.")
             except:
                 logger.error("Unexpected error:", sys.exc_info()[0])
-                raise
         return
 
     def getnetwork(self):
         logger.info("get NETWORK")
-        lines = self.sendcomd(b'AT+COPS?\r')
+        try:
+            lines = self.sendcomd(b'AT+COPS?\r')
+        except:
+            logger.error("Cant get NETWORK data!")
+            return
         for line in lines:
             if '+COPS' in line:
                 try:
@@ -1041,7 +1068,6 @@ class AtCommand(object):
                     logger.error("Could not convert data to an integer.")
                 except:
                     logger.error("Unexpected error:", sys.exc_info()[0])
-                    raise
         return
 
     def query(self):
@@ -1068,17 +1094,21 @@ class AtCommand(object):
 
     def opentty(self):
         ret = False
-        try:
-            self.ser = serial.Serial(port=self.port, baudrate=9600, bytesize=8, parity='N', stopbits=1,
-                                     timeout=1,
-                                     rtscts=True, dsrdtr=True)
-            ret = True
-        except (ValueError, TypeError, AttributeError) as e:
-            logger.error(e)
-            ret = False
-        except:
-            logger.error('Unexpected Exception Trying to open port %s' % self.port)
-            ret = False
+        for i in range(0, 6):
+            try:
+                self.ser = serial.Serial(port=self.port[i], baudrate=9600, bytesize=8, parity='N', stopbits=1,
+                                         timeout=1,
+                                         rtscts=True, dsrdtr=True)
+                ret = True
+                break
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.error(e)
+                ret = False
+                continue
+            except:
+                logger.error('Unexpected Exception Trying to open port %s' % self.port)
+                ret = False
+                continue
 
         return ret
 

@@ -17,11 +17,32 @@ import os
 
 path = dict()
 path['net'] = '/home/pi/servicecom/networks.json'
+path['config'] = '/home/pi/servicecom/config.json'
 
+
+def load(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+            f.close()
+            return data
+    except IOError as e:
+        print("I/O error({0}): {1}".format(e.errno, e.strerror))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+    return
 
 def getWiFiList():
     """Get a list of WiFi networks"""
-    os.system("sudo ifconfig wlan0 up")
+    data = load(path['config'])
+    status_wifi = None
+    if data['Flag']['Wifi'] == "0":
+        os.system("sudo ifconfig wlan0 up")
+        status_wifi = True
+
     proc = subprocess.Popen('sudo iwlist scan 2>/dev/null', shell=True, stdout=subprocess.PIPE, )
     stdout_str = proc.communicate()[0]
     stdout_list = stdout_str.decode().split('\n')
@@ -70,7 +91,21 @@ def getWiFiList():
     fjson = open(path['net'], "w+")
     fjson.write(strjson)
     fjson.close()
-
+    if status_wifi is True:
+        itsalive = True
+        while itsalive:
+            os.system("sudo ifconfig wlan0 down")
+            proc = subprocess.Popen('sudo ifconfig', shell=True, stdout=subprocess.PIPE, )
+            stdout_str = proc.communicate()[0]
+            stdout_list = stdout_str.decode().split('\n')
+            for line in stdout_list:
+                line = line.strip()
+                match = re.search('wlan0: (\S+)', line)
+                if match:
+                    continue
+                else:
+                    itsalive = False
+                    break
 
 if __name__ == "__main__":
     getWiFiList()
